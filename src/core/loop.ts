@@ -8,6 +8,7 @@ import { extractAndSaveSkill } from './skills.js';
 import { evaluateQuality, MAX_RETRIES } from './quality-gate.js';
 import { processMarkers } from '../tools/markers.js';
 import { validateTscFiles } from '../tools/tsc-validate.js';
+import { enqueueSpeech } from '../voice/state.js';
 
 // رد عام للدردشة العادية
 const CHAT_SYSTEM = `أنت مساعد في AI Command Center.
@@ -44,21 +45,25 @@ export async function processInput(input: string): Promise<LoopResult> {
       maxTokens: 800,
     });
     await saveToMemory(trimmed, reply.trim(), null);
-    return {
+    const result: LoopResult = {
       intent: 'chat',
       agentUsed: null,
       content: reply.trim(),
       elapsedMs: Date.now() - start,
     };
+    enqueueSpeech(result.content, result.agentUsed);
+    return result;
   }
 
   if (plan.tasks.length === 0) {
-    return {
+    const result: LoopResult = {
       intent: plan.intent,
       agentUsed: null,
       content: 'لم أتمكن من بناء مهمة من هذا الطلب.',
       elapsedMs: Date.now() - start,
     };
+    enqueueSpeech(result.content, result.agentUsed);
+    return result;
   }
 
   // نفّذ المهام بالترتيب الطوبولوجي
@@ -238,10 +243,13 @@ export async function processInput(input: string): Promise<LoopResult> {
     ? `⚠️ [بعض الردود غير مُتحققة — تعذّر تشغيل المراجع]\n\n${combined}`
     : combined;
 
-  return {
+  const result: LoopResult = {
     intent: plan.intent,
     agentUsed: lastAgent,
     content,
     elapsedMs: Date.now() - start,
   };
+
+  enqueueSpeech(result.content, result.agentUsed);
+  return result;
 }

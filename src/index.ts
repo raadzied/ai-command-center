@@ -10,6 +10,12 @@ import {
   listProjectDirectory,
   projectFileExists,
 } from './tools/filesystem.js';
+import {
+  isVoiceEnabled,
+  toggleVoice,
+  setVoiceEnabled,
+  cancelSpeech,
+} from './voice/state.js';
 
 function printHeader(): void {
   console.log('');
@@ -34,6 +40,8 @@ function printHelp(): void {
   console.log('  /help   عرض هذه المساعدة');
   console.log('  /skills [استعلام]  عرض المهارات المحفوظة');
   console.log('  /tool <action> <target> [content]  اختبار الأداة');
+  console.log('  /voice          تفعيل/تعطيل الصوت');
+  console.log('  /voice status   عرض الحالة الحالية');
   console.log('');
   console.log('نصائح:');
   console.log('  • ابدأ بـ "علّمني" للتفعيل وكيل Mentor');
@@ -104,6 +112,7 @@ async function main(): Promise<void> {
       if (!trimmed) continue;
 
       if (trimmed === '/exit' || trimmed === '/quit') {
+        cancelSpeech();
         console.log('\nإلى اللقاء 👋\n');
         break;
       }
@@ -116,6 +125,24 @@ async function main(): Promise<void> {
       if (trimmed === '/skills' || trimmed.startsWith('/skills ')) {
         const query = trimmed.slice('/skills'.length).trim() || undefined;
         printSkills(query);
+        continue;
+      }
+      if (trimmed === '/voice' || trimmed.startsWith('/voice ')) {
+        const sub = trimmed.slice('/voice'.length).trim();
+        if (sub === 'status') {
+          console.log(isVoiceEnabled() ? '🔊 الصوت مفعّل' : '🔇 الصوت معطّل');
+        } else if (sub === 'on') {
+          setVoiceEnabled(true);
+          console.log('🔊 الصوت مفعّل');
+        } else if (sub === 'off') {
+          setVoiceEnabled(false);
+          console.log('🔇 الصوت معطّل');
+        } else if (sub === '') {
+          const enabled = toggleVoice();
+          console.log(enabled ? '🔊 الصوت مفعّل' : '🔇 الصوت معطّل');
+        } else {
+          console.log('الاستخدام: /voice [on|off|status]');
+        }
         continue;
       }
       if (trimmed.startsWith('/tool ')) {
@@ -170,6 +197,8 @@ async function main(): Promise<void> {
   } finally {
     rl.close();
     closeDb();
+    // لا ننتظر الطابور — الخروج فوري
+    log.info('Exiting — speech queue abandoned');
   }
 }
 
