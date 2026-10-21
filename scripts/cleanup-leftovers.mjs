@@ -7,6 +7,9 @@ const LEFTOVERS = [
   'f1.ts', 'f2.ts', 'f3.ts', 'f4.ts', 'f5.ts', 'f6.ts',
   'tsc-out.txt', 'tsc-output.txt', 'install.log',
   'src/new-file.ts',
+  // ملفات مولّدة من جلسات E2E داخل src/ (تكسر tsc إن تُركت)
+  'src/rest-api-example.ts',
+  'src/rest-api-post-example.ts',
   'data/test-memory.db', 'data/test-memory.db-wal', 'data/test-memory.db-shm',
   'data/test.db', 'data/test.db-wal', 'data/test.db-shm',
 ];

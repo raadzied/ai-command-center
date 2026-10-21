@@ -18,13 +18,22 @@ const CASES: Case[] = [
     expectedRisk: 'safe',
   },
   {
-    label: 'كتابة ملف جديد',
+    label: 'كتابة ملف جديد خارج src/',
     action: {
       type: 'file_write',
-      target: 'src/new-file.ts',
+      target: 'output/new-file.ts',
       reason: 'إنشاء ملف جديد',
     },
     expectedRisk: 'safe',
+  },
+  {
+    label: 'كتابة داخل src/ — تحتاج مراجعة',
+    action: {
+      type: 'file_write',
+      target: 'src/new-file.ts',
+      reason: 'إنشاء ملف داخل كود المصدر',
+    },
+    expectedRisk: 'review',
   },
   {
     label: 'تعديل package.json',
