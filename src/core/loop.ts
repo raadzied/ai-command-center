@@ -7,6 +7,7 @@ import { buildMemoryContext, saveToMemory } from './memory.js';
 import { extractAndSaveSkill } from './skills.js';
 import { evaluateQuality, MAX_RETRIES } from './quality-gate.js';
 import { processMarkers } from '../tools/markers.js';
+import { validateTscFiles } from '../tools/tsc-validate.js';
 
 // رد عام للدردشة العادية
 const CHAT_SYSTEM = `أنت مساعد في AI Command Center.
@@ -179,6 +180,29 @@ export async function processInput(input: string): Promise<LoopResult> {
           wrote: markerResult.wroteCount,
           rejected: markerResult.rejectedCount,
         });
+      }
+
+      // فحص tsc للملفات .ts المكتوبة داخل src/
+      if (markerResult.wrotePaths.length > 0) {
+        const tsFiles = markerResult.wrotePaths.filter(
+          (p) => (p.endsWith('.ts') || p.endsWith('.tsx')) &&
+                 p.replace(/\\/g, '/').startsWith('src/'),
+        );
+        if (tsFiles.length > 0) {
+          const tscResult = validateTscFiles(tsFiles);
+          if (!tscResult.ok) {
+            const errLines = tscResult.errors
+              .slice(0, 5)
+              .map((e) => `  ${e}`)
+              .join('\n');
+            displayContent +=
+              `\n\n⚠️ الملفات المكتوبة تكسر tsc:\n${errLines}\n` +
+              `   أصلحها قبل البناء.`;
+            log.warn('Generated files break tsc', {
+              count: tscResult.errors.length,
+            });
+          }
+        }
       }
     }
 

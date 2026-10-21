@@ -22,6 +22,7 @@ export interface MarkerResult {
   wroteCount: number;
   rejectedCount: number;
   totalMarkers: number;
+  wrotePaths: string[];
 }
 
 // يستخرج كل تعليمات الكتابة من النص
@@ -74,6 +75,7 @@ export async function processMarkers(
       wroteCount: 0,
       rejectedCount: 0,
       totalMarkers: 0,
+      wrotePaths: [],
     };
   }
 
@@ -85,6 +87,7 @@ export async function processMarkers(
       wroteCount: 0,
       rejectedCount: instructions.length,
       totalMarkers: instructions.length,
+      wrotePaths: [],
     };
   }
 
@@ -92,6 +95,7 @@ export async function processMarkers(
 
   let wroteCount = 0;
   let rejectedCount = 0;
+  const wrotePaths: string[] = [];
   const statusLines: string[] = [];
 
   for (const instruction of instructions) {
@@ -114,6 +118,7 @@ export async function processMarkers(
     if (result.executed) {
       statusLines.push(`✅ ${instruction.path}`);
       wroteCount++;
+      wrotePaths.push(instruction.path);
     } else {
       statusLines.push(
         `❌ ${instruction.path}: ${result.error ?? 'مرفوض'}`,
@@ -131,6 +136,7 @@ export async function processMarkers(
     wroteCount,
     rejectedCount,
     totalMarkers: instructions.length,
+    wrotePaths,
   };
 }
 

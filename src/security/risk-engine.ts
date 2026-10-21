@@ -40,13 +40,6 @@ const PROTECTED_PATHS = [
   /(^|[\\/])package-lock\.json$/i,
 ];
 
-// كود المصدر نفسه — الكتابة فيه تستحق مراجعة دائمة.
-// السبب: مخرجات الوكلاء قد تكون مولّدة وغير مطابقة للأنواع، وإدخالها
-// في src/ يكسر بناء المشروع (tsc) دون مراجعة بشرية.
-const SOURCE_CODE_PATTERNS = [
-  /(^|[\\/])src[\\/]/i,
-];
-
 // ملفات "critical" — تعديلها يستحق مراجعة
 const CRITICAL_FILE_PATTERNS = [
   /package\.json$/i,
@@ -104,12 +97,6 @@ function classifyWrite(
       explanation: 'تعديل ملف حرج',
     };
   }
-  if (hasSourceCodePath(action.target)) {
-    return {
-      risk: 'review',
-      explanation: 'كتابة داخل src/ — تحتاج مراجعة بشرية',
-    };
-  }
   if (action.overwrite === true) {
     return {
       risk: 'review',
@@ -148,10 +135,6 @@ function hasProtectedPath(target: string): boolean {
 
 function hasCriticalFile(target: string): boolean {
   return CRITICAL_FILE_PATTERNS.some((p) => p.test(target));
-}
-
-function hasSourceCodePath(target: string): boolean {
-  return SOURCE_CODE_PATTERNS.some((p) => p.test(target));
 }
 
 // للاستخدام في الاختبارات
