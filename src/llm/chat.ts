@@ -6,6 +6,9 @@ export interface ChatOptions {
   maxTokens?: number;
   model?: string;
   preferredModel?: string;
+  // افتراضي true — للتوافق مع المستدعين الحاليين (decomposer/quality-gate).
+  // مرّره false للنص العادي: Groq يرفض json_object إن لم يذكر الطلب JSON.
+  jsonMode?: boolean;
 }
 
 function getKey(): string {
@@ -101,7 +104,7 @@ export async function chat(
     log.warn('All Gemini models failed, falling back to Groq', {
       status: lastStatus,
     });
-    return chatGroq(system, user, options);
+    return chatGroq(system, user, { ...options, jsonMode: false });
   }
 
   const data = (await response.json()) as unknown;
@@ -161,15 +164,18 @@ export async function chatGroq(
       'openai/gpt-oss-20b,openai/gpt-oss-120b';
   const models = modelsRaw.split(',').map((m) => m.trim()).filter(Boolean);
 
-  const body = {
+  const jsonMode = options.jsonMode !== false;
+  const body: Record<string, unknown> = {
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: user },
     ],
     temperature: options.temperature ?? 0.2,
     max_tokens: options.maxTokens ?? 500,
-    response_format: { type: 'json_object' },
   };
+  if (jsonMode) {
+    body.response_format = { type: 'json_object' };
+  }
 
   // Groq يُرجع 400 أحيانًا عند rate limiting على مستوى الـ burst،
   // لذا نعتبره قابلًا لإعادة المحاولة مع الموديل التالي.
