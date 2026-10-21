@@ -44,3 +44,8 @@ package-lock.json.bak
 # OS
 .DS_Store
 Thumbs.db
+
+# Test audio files
+test-*.mp3
+cmp-*.mp3
+pick-*.mp3
