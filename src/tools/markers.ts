@@ -5,6 +5,20 @@ import { logger as log } from '../llm/logger.js';
 // الحد الأقصى لعدد markers في رد واحد
 const MAX_MARKERS = 5;
 
+const ALLOWED_PREFIXES = ['src/', 'scripts/'];
+const ALLOWED_ROOT_FILES = ['package.json', 'tsconfig.json', 'README.md',
+  'AGENTS.md', 'ARCHITECTURE.md', '.gitignore',
+];
+
+function isAllowedPath(rawPath: string): boolean {
+  const normalized = rawPath.replace(/\\/g, '/');
+  return (
+    ALLOWED_PREFIXES.some((p) => normalized.startsWith(p)) ||
+    ALLOWED_ROOT_FILES.includes(normalized) ||
+    normalized.startsWith('data/')
+  );
+}
+
 // نمط marker الكتابة
 const WRITE_PATTERN =
   /\[WRITE_FILE:\s*([^\]\n]+?)\s*\]\s*\n([\s\S]*?)\n\s*\[\/WRITE_FILE\]/g;
@@ -100,6 +114,15 @@ export async function processMarkers(
 
   for (const instruction of instructions) {
     log.info('Marker detected', { path: instruction.path });
+
+    if (!isAllowedPath(instruction.path)) {
+      log.warn('Marker rejected — path not allowed', {
+        path: instruction.path,
+      });
+      statusLines.push(`❌ ${instruction.path}: مسار غير مسموح`);
+      rejectedCount++;
+      continue;
+    }
 
     let result: ExecutionResult<void>;
     try {

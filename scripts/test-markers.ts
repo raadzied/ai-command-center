@@ -121,6 +121,67 @@ function main(): void {
   if (countOk) passed++;
   console.log('');
 
+
+  // === processMarkers path validation (حسابي، بلا كتابة) ===
+  console.log('\n=== processMarkers path validation ===\n');
+
+  const testCases = [
+    {
+      label: 'src/ مسموح',
+      marker: '[WRITE_FILE: src/valid.ts]\nx\n[/WRITE_FILE]',
+      expectedWrote: 1,
+      expectedRejected: 0,
+    },
+    {
+      label: 'الجذر ممنوع',
+      marker: '[WRITE_FILE: bad.ts]\nx\n[/WRITE_FILE]',
+      expectedWrote: 0,
+      expectedRejected: 1,
+    },
+    {
+      label: 'package.json مسموح',
+      marker: '[WRITE_FILE: package.json]\n{}\n[/WRITE_FILE]',
+      expectedWrote: 1,
+      expectedRejected: 0,
+    },
+    {
+      label: 'مسارات مختلطة',
+      marker: '[WRITE_FILE: src/a.ts]\nx\n[/WRITE_FILE]\n' +
+              '[WRITE_FILE: evil.ts]\ny\n[/WRITE_FILE]',
+      expectedWrote: 1,
+      expectedRejected: 1,
+    },
+  ];
+
+  let pathTestsPassed = 0;
+  for (const tc of testCases) {
+    const instructions = extractWriteInstructions(tc.marker);
+    let allowed = 0;
+    let rejected = 0;
+    for (const inst of instructions) {
+      const normalized = inst.path.replace(/\\/g, '/');
+      const ok =
+        normalized.startsWith('src/') ||
+        normalized.startsWith('scripts/') ||
+        normalized.startsWith('data/') ||
+        ['package.json', 'tsconfig.json', 'README.md',
+         'AGENTS.md', 'ARCHITECTURE.md', '.gitignore']
+          .includes(normalized);
+      if (ok) allowed++;
+      else rejected++;
+    }
+    const pass =
+      allowed === tc.expectedWrote &&
+      rejected === tc.expectedRejected;
+    console.log(`${pass ? '✓' : '✗'} ${tc.label} (allowed=${allowed}, rejected=${rejected})`);
+    if (pass) pathTestsPassed++;
+  }
+
+  console.log(`\n=== Path tests: ${pathTestsPassed}/${testCases.length} ===`);
+  if (pathTestsPassed !== testCases.length) {
+    process.exit(1);
+  }
+
   const total = CASES.length + 2;
   console.log(`=== ${passed}/${total} passed ===`);
   process.exit(passed === total ? 0 : 1);

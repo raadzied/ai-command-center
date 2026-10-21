@@ -182,11 +182,13 @@ export async function processInput(input: string): Promise<LoopResult> {
         });
       }
 
-      // فحص tsc للملفات .ts المكتوبة داخل src/
+      // فحص tsc لكل ملفات .ts المكتوبة.
+      // ملاحظة: tsconfig يفحص src/**/* فقط، فملف خارج src/ قد لا
+      // تُلتقط أخطاؤه — لكن FIX 1 في markers.ts يمنع كتابة .ts خارج
+      // src/ أو scripts/ أصلاً.
       if (markerResult.wrotePaths.length > 0) {
         const tsFiles = markerResult.wrotePaths.filter(
-          (p) => (p.endsWith('.ts') || p.endsWith('.tsx')) &&
-                 p.replace(/\\/g, '/').startsWith('src/'),
+          (p) => p.endsWith('.ts') || p.endsWith('.tsx'),
         );
         if (tsFiles.length > 0) {
           const tscResult = validateTscFiles(tsFiles);
