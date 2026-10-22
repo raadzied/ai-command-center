@@ -51,6 +51,19 @@ const MARKDOWN_PATTERNS: RegExp[] = [
   /\[([^\]]+)\]\([^)]+\)/g,
 ];
 
+// أنماط المجاملات التي تُتخطى عند اختيار الجوهر
+const GREETING_PATTERNS: RegExp[] = [
+  /^(أهلاً|أهلا|مرحباً|مرحبا|السلام عليكم|تحياتي|يسرني|يسعدني|بكل سرور|بالتأكيد|بالطبع)/u,
+  /^كما (ناقشنا|شرحنا|تحدثنا|ذكرنا)/u,
+  /^(Welcome|Hi|Hello|Glad|Happy|Sure|Of course)/i,
+  /^(في البداية|للبدء|دعنا نبدأ|لنبدأ)/u,
+];
+
+function isGreeting(sentence: string): boolean {
+  const trimmed = sentence.trim();
+  return GREETING_PATTERNS.some((p) => p.test(trimmed));
+}
+
 // يزيل التفاصيل التقنية ثم Markdown
 function cleanText(text: string): string {
   let result = text;
@@ -64,6 +77,9 @@ function cleanText(text: string): string {
 
   // مسافات متعددة → مسافة واحدة
   result = result.replace(/\s+/g, ' ').trim();
+
+  // إزالة المسافة قبل علامات الترقيم
+  result = result.replace(/\s+([.،؛:!؟؟])/g, '$1');
   return result;
 }
 
@@ -113,9 +129,15 @@ export function extractEssence(
   }
 
   // 2) جمل ذات معنى
-  const sentences = splitSentences(cleaned).filter(isMeaningful);
-  if (sentences.length === 0) {
+  const meaningful = splitSentences(cleaned).filter(isMeaningful);
+  if (meaningful.length === 0) {
     log.info('Essence: no meaningful sentences');
+    return '';
+  }
+
+  const sentences = meaningful.filter((s) => !isGreeting(s));
+  if (sentences.length === 0) {
+    log.info('Essence: only greetings after filtering');
     return '';
   }
 

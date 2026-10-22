@@ -1,5 +1,5 @@
 import { logger as log } from '../llm/logger.js';
-import { speak } from './tts.js';
+import { speak, killCurrentPlayback } from './tts.js';
 import { extractEssence } from './essence.js';
 
 let voiceEnabled = false;
@@ -21,7 +21,8 @@ export function toggleVoice(): boolean {
 
 export function cancelSpeech(): void {
   cancelled = true;
-  log.info('Speech queue cancelled');
+  killCurrentPlayback();
+  log.info('Speech cancelled + current playback killed');
 }
 
 // يضع جوهر الرد في طابور النطق — fire-and-forget.
