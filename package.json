@@ -11,7 +11,8 @@
     "build": "tsc && node scripts/copy-assets.mjs",
     "start": "node dist/index.js",
     "test": "node scripts/run-all-tests.mjs",
-    "test:unit": "node --import tsx --test --test-force-exit src/llm/classifier.cloud.test.ts",
+    "test:unit": "node scripts/run-all-tests.mjs",
+    "test:live": "node scripts/run-all-tests.mjs --live",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
