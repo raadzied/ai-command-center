@@ -16,6 +16,9 @@ import {
   setVoiceEnabled,
   cancelSpeech,
 } from './voice/state.js';
+import { readRecentAudit } from './security/audit.js';
+import { speak } from './voice/tts.js';
+import { AGENT_VOICES } from './voice/voices.js';
 
 function printHeader(): void {
   console.log('');
@@ -39,6 +42,8 @@ function printHelp(): void {
   console.log('  /exit   إنهاء الجلسة');
   console.log('  /help   عرض هذه المساعدة');
   console.log('  /skills [استعلام]  عرض المهارات المحفوظة');
+  console.log('  /audit          آخر 20 عملية موافقة/رفض');
+  console.log('  /say <نص>       نطق نص عشوائي بصوت Khalid');
   console.log('  /tool <action> <target> [content]  اختبار الأداة');
   console.log('  /voice          تفعيل/تعطيل الصوت');
   console.log('  /voice status   عرض الحالة الحالية');
@@ -127,10 +132,45 @@ async function main(): Promise<void> {
         printSkills(query);
         continue;
       }
+
+      if (trimmed === '/audit') {
+        try {
+          const records = readRecentAudit(20);
+          if (records.length === 0) {
+            console.log('\n📋 لا توجد عمليات مسجّلة بعد.\n');
+          } else {
+            console.log(`\n📋 آخر ${records.length} عملية:\n`);
+            for (const r of records) {
+              const ts = r.timestamp.slice(0, 19);
+              console.log(`  [${r.risk}/${r.decision}] ${r.action_type} → ${r.target.slice(0, 40)} @ ${ts}`);
+            }
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`\n❌ فشل قراءة سجل المراجعة: ${msg}\n`);
+        }
+        continue;
+      }
+
+      if (trimmed.startsWith('/say ')) {
+        const text = trimmed.slice('/say '.length).trim();
+        if (!text) { console.log('الاستخدام: /say <نص>'); continue; }
+        console.log('🔊 جاري التوليد...');
+        await speak(text, { agentName: null });
+        console.log('✅ انتهى النطق');
+        continue;
+      }
+
       if (trimmed === '/voice' || trimmed.startsWith('/voice ')) {
         const sub = trimmed.slice('/voice'.length).trim();
         if (sub === 'status') {
           console.log(isVoiceEnabled() ? '🔊 الصوت مفعّل' : '🔇 الصوت معطّل');
+          console.log('');
+          console.log('الأصوات المعيّنة:');
+          for (const [agent, voice] of Object.entries(AGENT_VOICES)) {
+            console.log(`  • ${agent.padEnd(10)} → ${voice}`);
+          }
+          console.log('');
         } else if (sub === 'on') {
           setVoiceEnabled(true);
           console.log('🔊 الصوت مفعّل');
