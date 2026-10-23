@@ -81,6 +81,19 @@ export async function evaluateQuality(
       });
     }
 
+    // A2: رد مقطوع = فشل تلقائي، لا يُقبل بـ PASS
+    if (input.output.includes('⚠️ [الرد مقطوع')) {
+      log.warn('Quality gate: truncated output detected', {
+        agent: input.agent,
+      });
+      return {
+        status: 'FAIL',
+        score: 0,
+        issues: [{ description: 'الرد مقطوع — تجاوز حد الرموز' }],
+        summary: 'Truncated output',
+      };
+    }
+
     const criteria = CHECKS[input.agent];
     const userMsg = buildUserMessage(criteria, input);
 

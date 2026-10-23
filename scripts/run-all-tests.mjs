@@ -12,6 +12,7 @@ const UNIT_TESTS = [
   'scripts/test-tsc-validate.ts',
   'scripts/test-registry.ts',
   'scripts/test-build-start.mjs',
+  'scripts/test-filesystem-security.ts',
 ];
 
 const LIVE_TESTS = [
@@ -21,6 +22,8 @@ const LIVE_TESTS = [
   'scripts/test-mentor.ts',
   'scripts/test-agents.ts',
   'scripts/e2e-v2.ts',
+  'scripts/test-quality-gate.ts',
+  'scripts/test-tts.ts',
 ];
 
 function runSuite(label, files) {

@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import assert from 'node:assert/strict';
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { initDb, closeDb } from '../src/memory/db.js';
@@ -14,7 +15,8 @@ const OUTSIDE_FILE = join(tmpdir(), `ai-cc-outside-${Date.now()}.txt`);
 const LINK_NAME = join(TMP_DIR, 'link-outside.txt');
 
 async function main(): Promise<void> {
-  initDb();
+  const DB_DIR = mkdtempSync(join(tmpdir(), 'ai-cc-fs-test-'));
+  initDb(join(DB_DIR, 'test.db'));
   console.log('=== Filesystem Security Test ===\n');
   let passed = 0;
   const total = 4;
@@ -61,11 +63,12 @@ async function main(): Promise<void> {
   } finally {
     await rm(TMP_DIR, { recursive: true, force: true });
     await rm(OUTSIDE_FILE, { force: true });
+    closeDb();
+    rmSync(DB_DIR, { recursive: true, force: true });
   }
 
-  closeDb();
   console.log(`\n=== ${passed}/${total} passed ===`);
-  process.exit(passed === total ? 0 : 1);
+  process.exitCode = passed === total ? 0 : 1;
 }
 
 main().catch((err) => {
