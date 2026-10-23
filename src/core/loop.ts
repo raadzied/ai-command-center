@@ -1,4 +1,5 @@
 import { createPlan } from './planner.js';
+import type { Plan } from './planner.js';
 import { selectAgent } from './router.js';
 import { topologicalSort } from './decomposer.js';
 import { chat } from '../llm/chat.js';
@@ -9,7 +10,15 @@ import { evaluateQuality, MAX_RETRIES } from './quality-gate.js';
 import { processMarkers } from '../tools/markers.js';
 import { validateTscFiles } from '../tools/tsc-validate.js';
 import { enqueueSpeech } from '../voice/state.js';
-import type { TaskSummary } from '../types.js';
+import type {
+  AgentName,
+  Context,
+  QualityInput,
+  QualityResult,
+  Task,
+  TaskSummary,
+} from '../types.js';
+import type { MarkerResult } from '../tools/markers.js';
 
 // رد عام للدردشة العادية
 const CHAT_SYSTEM = `أنت مساعد في AI Command Center.
@@ -28,8 +37,49 @@ export interface LoopResult {
   taskSummary?: TaskSummary[];
 }
 
+// التبعيات القابلة للحقن (للاختبار بلا API)
+export interface LoopDeps {
+  buildMemoryContext: (input: string) => Promise<Context>;
+  createPlan: (input: string, ctx: Context) => Promise<Plan>;
+  selectAgent: (
+    task: Task,
+  ) => {
+    name: AgentName;
+    execute: (t: Task, c: Context) => Promise<{ content: string }>;
+  } | null;
+  evaluateQuality: (input: QualityInput) => Promise<QualityResult>;
+  processMarkers: (text: string) => Promise<MarkerResult>;
+  saveToMemory: (
+    user: string,
+    agent: string,
+    name: string | null,
+  ) => Promise<void>;
+  enqueueSpeech: (text: string, agent: string | null) => void;
+  chat: (
+    system: string,
+    user: string,
+    opts?: { temperature?: number; maxTokens?: number },
+  ) => Promise<string>;
+}
+
+// التبعيات الحقيقية — الافتراضي في الإنتاج
+const defaultDeps: LoopDeps = {
+  buildMemoryContext,
+  createPlan,
+  selectAgent,
+  evaluateQuality,
+  processMarkers,
+  saveToMemory,
+  enqueueSpeech,
+  chat,
+};
+
 // يعالج مدخل المستخدم كاملاً (ينفّذ مخطط مهام متعددًا)
-export async function processInput(input: string): Promise<LoopResult> {
+export async function processInput(
+  input: string,
+  overrides: Partial<LoopDeps> = {},
+): Promise<LoopResult> {
+  const deps: LoopDeps = { ...defaultDeps, ...overrides };
   const start = Date.now();
   const trimmed = input.trim();
 
@@ -37,24 +87,24 @@ export async function processInput(input: string): Promise<LoopResult> {
     return { intent: 'empty', agentUsed: null, content: '', elapsedMs: 0 };
   }
 
-  const context = await buildMemoryContext(trimmed);
-  const plan = await createPlan(trimmed, context);
+  const context = await deps.buildMemoryContext(trimmed);
+  const plan = await deps.createPlan(trimmed, context);
 
   // دردشة عادية
   if (plan.isChat) {
     log.info('Handling as chat');
-    const reply = await chat(CHAT_SYSTEM, trimmed, {
+    const reply = await deps.chat(CHAT_SYSTEM, trimmed, {
       temperature: 0.6,
       maxTokens: 800,
     });
-    await saveToMemory(trimmed, reply.trim(), null);
+    await deps.saveToMemory(trimmed, reply.trim(), null);
     const result: LoopResult = {
       intent: 'chat',
       agentUsed: null,
       content: reply.trim(),
       elapsedMs: Date.now() - start,
     };
-    enqueueSpeech(result.content, result.agentUsed);
+    deps.enqueueSpeech(result.content, result.agentUsed);
     return result;
   }
 
@@ -65,7 +115,7 @@ export async function processInput(input: string): Promise<LoopResult> {
       content: 'لم أتمكن من بناء مهمة من هذا الطلب.',
       elapsedMs: Date.now() - start,
     };
-    enqueueSpeech(result.content, result.agentUsed);
+    deps.enqueueSpeech(result.content, result.agentUsed);
     return result;
   }
 
@@ -86,7 +136,7 @@ export async function processInput(input: string): Promise<LoopResult> {
     const taskStart = Date.now();
 
     try {
-      const agent = selectAgent(task);
+      const agent = deps.selectAgent(task);
       if (!agent) {
         throw new Error('لا وكيل مناسب لهذه المهمة');
       }
@@ -127,7 +177,7 @@ export async function processInput(input: string): Promise<LoopResult> {
           });
         }
 
-        const quality = await evaluateQuality({
+        const quality = await deps.evaluateQuality({
           agent: agent.name,
           task: enrichedTask.description,
           output: output.content,
@@ -182,7 +232,7 @@ export async function processInput(input: string): Promise<LoopResult> {
       // المهام التالية أن ملفًا كُتب)
       let displayContent = output.content;
       if (agent.name === 'coder') {
-        const markerResult = await processMarkers(output.content);
+        const markerResult = await deps.processMarkers(output.content);
         displayContent =
           markerResult.cleanedContent + markerResult.writeStatus;
         if (markerResult.totalMarkers > 0) {
@@ -287,8 +337,8 @@ export async function processInput(input: string): Promise<LoopResult> {
   if (summaries.length > 1) result.taskSummary = summaries;
 
   // حفظ واحد لكل مدخل: نص المستخدم الأصلي + الرد المُجمَّع النهائي
-  await saveToMemory(trimmed, result.content, lastAgent);
+  await deps.saveToMemory(trimmed, result.content, lastAgent);
 
-  enqueueSpeech(result.content, result.agentUsed);
+  deps.enqueueSpeech(result.content, result.agentUsed);
   return result;
 }
