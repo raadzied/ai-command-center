@@ -41,6 +41,10 @@ package-lock.json.bak
 .idea/
 *.swp
 
+# Temp files
+*.tmp
+*.temp
+
 # OS
 .DS_Store
 Thumbs.db

@@ -79,6 +79,31 @@ node dist/index.js
 
 فحص سريع: npm run typecheck
 
+## البناء والتشغيل
+
+### في بيئة Windows
+- **Node 22 LTS** إلزامي (Node 24 يكسر الاختبارات).
+- شغّل من **PowerShell مباشرة**، لا من VS Code أو OpenCode terminal
+  (stdin غير تفاعلي هناك).
+- إن ظهرت العربية مشوّهة: `chcp 65001`.
+- `cmd.exe` محجوب على هذا الجهاز (minifilter) — `npm run build`
+  يعمل عبر `scripts/build.mjs` (لا يستخدم cmd).
+
+### البناء
+```powershell
+npm run build
+```
+ينتج dist/ + ينسخ schema.sql تلقائيًا.
+
+### التشغيل (production)
+```powershell
+node dist/index.js
+```
+
+### الاختبارات
+- `npm test` — اختبارات وحدة فقط، بلا API (سريع، آمن، موثوق).
+- `npm run test:live` — يشمل اختبارات API حقيقية (يستهلك حصة).
+
 ## قيود معروفة (V3.4)
 
 ### عتبة صلة الذاكرة
