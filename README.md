@@ -81,13 +81,11 @@ node dist/index.js
 
 ## البناء والتشغيل
 
-### في بيئة Windows
+### بيئة Windows
 - **Node 22 LTS** إلزامي (Node 24 يكسر الاختبارات).
-- شغّل من **PowerShell مباشرة**، لا من VS Code أو OpenCode terminal
-  (stdin غير تفاعلي هناك).
+- شغّل من **PowerShell مباشرة** (لا VS Code/OpenCode terminal — stdin غير تفاعلي).
 - إن ظهرت العربية مشوّهة: `chcp 65001`.
-- `cmd.exe` محجوب على هذا الجهاز (minifilter) — `npm run build`
-  يعمل عبر `scripts/build.mjs` (لا يستخدم cmd).
+- `cmd.exe` محجوب على هذا الجهاز — `npm run build` يتجاوز cmd عبر `scripts/build.mjs`.
 
 ### البناء
 ```powershell

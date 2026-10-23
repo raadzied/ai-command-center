@@ -53,3 +53,7 @@ Thumbs.db
 test-*.mp3
 cmp-*.mp3
 pick-*.mp3
+
+# Temporary files
+.tmp
+.tmp-

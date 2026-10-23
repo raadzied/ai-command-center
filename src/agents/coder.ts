@@ -41,6 +41,16 @@ const CODER_SYSTEM = `أنت Coder في نظام AI Command Center.
 - لا تكتب أي شرح داخل marker الكتابة — فقط محتوى الملف
   نفسه.
 - الشرح والأمثلة التوضيحية الأخرى تبقى خارج marker.
+
+قاعدة TypeScript strict:
+- المشروع يستخدم strict + useUnknownInCatchVariables.
+- داخل catch، استخدم:
+  catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+  }
+- لا تستخدم error.message مباشرة (error من نوع unknown).
+- لا تستخدم require.main (ESM): استخدم:
+  if (import.meta.url === \`file://\${process.argv[1]}\`) { ... }
 `;
 
 // وكيل Coder

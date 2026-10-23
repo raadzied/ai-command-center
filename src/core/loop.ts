@@ -178,8 +178,8 @@ export async function processInput(input: string): Promise<LoopResult> {
           : '';
 
       // عالج markers الكتابة من رد Coder
-      // (prevOutput و saveToMemory أدناه يستخدمان output.content
-      // الخام — حتى تعرف المهام التالية أن ملفًا كُتب)
+      // (prevOutput أدناه يستخدم output.content الخام — حتى تعرف
+      // المهام التالية أن ملفًا كُتب)
       let displayContent = output.content;
       if (agent.name === 'coder') {
         const markerResult = await processMarkers(output.content);
@@ -229,14 +229,8 @@ export async function processInput(input: string): Promise<LoopResult> {
       }
       parts.push(header + finalContent);
 
-      // احفظ كل مهمة كسياق للمهمة التالية وللذاكرة
+      // احفظ المخرج الخام كسياق للمهمة التالية (لا يُحفظ في الذاكرة هنا)
       prevOutput = output.content;
-
-      await saveToMemory(
-        `[${task.id}] ${task.description}`,
-        output.content,
-        agent.name,
-      );
 
       // استخرج مهارة إن كان Mentor ولم يكن unverified
       if (agent.name === 'mentor' && !unverified) {
@@ -291,6 +285,9 @@ export async function processInput(input: string): Promise<LoopResult> {
     elapsedMs: Date.now() - start,
   };
   if (summaries.length > 1) result.taskSummary = summaries;
+
+  // حفظ واحد لكل مدخل: نص المستخدم الأصلي + الرد المُجمَّع النهائي
+  await saveToMemory(trimmed, result.content, lastAgent);
 
   enqueueSpeech(result.content, result.agentUsed);
   return result;

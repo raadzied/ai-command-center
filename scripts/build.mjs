@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, cpSync } from 'node:fs';
+import { existsSync, mkdirSync, cpSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 const TSC = resolve('node_modules/typescript/bin/tsc');
@@ -15,6 +15,12 @@ function step(label, fn) {
     process.exit(code);
   }
   console.log(`✓ ${label}`);
+}
+
+if (existsSync('dist')) {
+  console.log('▸ cleaning dist/');
+  rmSync('dist', { recursive: true, force: true });
+  console.log('✓ dist/ cleaned');
 }
 
 step('tsc compile', () => {

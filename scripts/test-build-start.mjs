@@ -42,20 +42,12 @@ function runInteractive(label, cmd, args, delayMs, timeoutMs) {
 async function main() {
   console.log('=== Build → Start Test ===\n');
 
-  const tscExit = await runSync(
-    'tsc (via node)',
+  const buildExit = await runSync(
+    'scripts/build.mjs',
     process.execPath,
-    ['node_modules/typescript/bin/tsc'],
+    ['scripts/build.mjs'],
   );
-  if (tscExit !== 0) { console.error('❌ tsc failed'); process.exit(1); }
-  console.log('✓ tsc compiled');
-
-  const copyExit = await runSync(
-    'copy-assets',
-    process.execPath,
-    ['scripts/copy-assets.mjs'],
-  );
-  if (copyExit !== 0) { console.error('❌ copy-assets failed'); process.exit(1); }
+  if (buildExit !== 0) { console.error('❌ build failed'); process.exit(1); }
 
   if (!existsSync('dist/memory/schema.sql')) {
     console.error('❌ dist/memory/schema.sql missing');
