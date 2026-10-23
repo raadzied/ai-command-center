@@ -11,6 +11,10 @@ const MEMORY_LIMIT = 5;
 // أقصى طول يُحفظ من نص واحد (لتفادي تضخم DB)
 const MAX_CONTENT_LEN = 2000;
 
+// عتبة الصلة: المسافة الأعلى = أقل صلة
+// (0.55 يُبقي المهام المشابهة، ويستبعد المحادثات البعيدة)
+const MAX_DISTANCE = 0.55;
+
 // يبني Context من الذاكرة بناءً على نص المستخدم.
 // إن فشل أي شيء، يعيد Context فارغًا بدل أن يكسر الحلقة.
 export async function buildMemoryContext(input: string): Promise<Context> {
@@ -18,15 +22,21 @@ export async function buildMemoryContext(input: string): Promise<Context> {
     const vec = await embed(input);
     const db = getDb();
     const raw = retrieveUnified(db, vec, MEMORY_LIMIT);
+    const relevant = raw.filter((r) => r.distance <= MAX_DISTANCE);
+    const discarded = raw.length - relevant.length;
 
-    const memories: MemoryItem[] = raw.map((r) => ({
+    const memories: MemoryItem[] = relevant.map((r) => ({
       id: r.id,
       content: r.content.slice(0, MAX_CONTENT_LEN),
       category: r.category,
       similarity: 1 - r.distance,
     }));
 
-    log.info('Memory context built', { count: memories.length });
+    log.info('Memory context built', {
+      count: memories.length,
+      discarded,
+      total: raw.length,
+    });
     return { memories };
   } catch (err) {
     log.warn('Memory retrieval failed, proceeding empty', { err });
