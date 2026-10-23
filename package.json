@@ -13,7 +13,10 @@
     "test": "node scripts/run-all-tests.mjs",
     "test:unit": "node scripts/run-all-tests.mjs",
     "test:live": "node scripts/run-all-tests.mjs --live",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "preelectron:build": "node node_modules/typescript/bin/tsc -p tsconfig.electron.json",
+    "electron:build": "node scripts/copy-electron-assets.mjs",
+    "electron:start": "node node_modules/electron/cli.js dist-electron/electron/main.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",

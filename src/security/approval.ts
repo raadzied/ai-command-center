@@ -1,5 +1,3 @@
-import { createInterface } from 'node:readline/promises';
-import { stdin, stdout } from 'node:process';
 import type {
   ClassifiedAction,
   ApprovalResult,
@@ -10,6 +8,25 @@ import { logger as log } from '../llm/logger.js';
 // معرّف مراجعة فريد
 function generateAuditId(): string {
   return `audit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export interface ApprovalStrategy {
+  ask(action: ClassifiedAction, auditId: string): Promise<ApprovalDecision>;
+}
+
+let currentStrategy: ApprovalStrategy | null = null;
+
+export function setApprovalStrategy(strategy: ApprovalStrategy): void {
+  currentStrategy = strategy;
+}
+
+export function getApprovalStrategy(): ApprovalStrategy {
+  if (!currentStrategy) {
+    throw new Error(
+      'Approval strategy not set. Call setApprovalStrategy() at startup.',
+    );
+  }
+  return currentStrategy;
 }
 
 // ─── بوابة الموافقة ───
@@ -46,43 +63,13 @@ export async function requestApproval(
     return { decision: 'blocked', auditId };
   }
 
-  // REVIEW — نسأل المستخدم
-  return await askUser(action, auditId);
-}
-
-// ─── التفاعل مع المستخدم ───
-
-async function askUser(
-  action: ClassifiedAction,
-  auditId: string,
-): Promise<ApprovalResult> {
-  console.log('');
-  console.log('⚠️  عملية تحتاج موافقتك:');
-  console.log(`   النوع: ${action.type}`);
-  console.log(`   الهدف: ${action.target}`);
-  console.log(`   السبب: ${action.reason}`);
-  console.log(`   التصنيف: ${action.explanation}`);
-  console.log('');
-
-  const rl = createInterface({ input: stdin, output: stdout });
-  let decision: ApprovalDecision = 'user_denied';
-
-  try {
-    const answer = await rl.question('موافقتك؟ [y/N]: ');
-    const normalized = answer.trim().toLowerCase();
-    if (normalized === 'y' || normalized === 'yes') {
-      decision = 'user_approved';
-    }
-  } finally {
-    rl.close();
-  }
-
+  // REVIEW — نسأل المستخدم عبر الاستراتيجية المحقونة
+  const decision = await getApprovalStrategy().ask(action, auditId);
   log.info('Approval decision', {
     auditId,
     decision,
     type: action.type,
   });
-
   return { decision, auditId };
 }
 

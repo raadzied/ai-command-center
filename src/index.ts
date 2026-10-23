@@ -17,6 +17,8 @@ import {
   cancelSpeech,
 } from './voice/state.js';
 import { readRecentAudit } from './security/audit.js';
+import { setApprovalStrategy } from './security/approval.js';
+import { cliStrategy } from './security/cli-strategy.js';
 import { speak } from './voice/tts.js';
 import { AGENT_VOICES } from './voice/voices.js';
 
@@ -99,6 +101,7 @@ function printSkills(query?: string): void {
 
 async function main(): Promise<void> {
   initDb();
+  setApprovalStrategy(cliStrategy);
   log.info('Memory database initialized');
   printHeader();
 
