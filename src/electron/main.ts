@@ -132,7 +132,7 @@ async function createWindow(): Promise<void> {
   });
 
   await win.loadFile(
-    join(__dirname, '../../src/electron/renderer/index.html'),
+    join(__dirname, '../../dist-renderer/index.html'),
   );
 
   if (!app.isPackaged) {

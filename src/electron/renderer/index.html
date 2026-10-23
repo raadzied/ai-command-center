@@ -3,45 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; style-src 'self' 'unsafe-inline';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' file: data:; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';">
   <title>AI Command Center</title>
-  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <header class="header">
-      <h1>AI Command Center</h1>
-      <div class="status">3 وكلاء · جاهز</div>
-    </header>
-
-    <main class="chat" id="chat">
-      <div class="message agent">
-        <div class="msg-header">النظام</div>
-        <div class="msg-body">مرحبًا. اكتب طلبك بالعربية.</div>
-      </div>
-    </main>
-
-    <footer class="composer">
-      <textarea id="input" placeholder="اكتب طلبك... (Enter للإرسال، Shift+Enter لسطر جديد)" rows="2"></textarea>
-      <button id="send">إرسال</button>
-    </footer>
-
-    <div class="approval-modal" id="approval-modal" hidden>
-      <div class="approval-content">
-        <h2>⚠️ عملية تحتاج موافقتك</h2>
-        <div class="approval-details">
-          <div><strong>النوع:</strong> <span id="ap-type"></span></div>
-          <div><strong>الهدف:</strong> <span id="ap-target"></span></div>
-          <div><strong>السبب:</strong> <span id="ap-reason"></span></div>
-          <div><strong>التصنيف:</strong> <span id="ap-explanation"></span></div>
-        </div>
-        <div class="approval-buttons">
-          <button id="ap-approve" class="btn-approve">موافقة</button>
-          <button id="ap-deny" class="btn-deny">رفض</button>
-        </div>
-      </div>
-    </div>
-  </div>
-  <script src="app.js"></script>
+  <div id="root"></div>
+  <script type="module" src="./src/main.tsx"></script>
 </body>
 </html>

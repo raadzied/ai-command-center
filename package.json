@@ -14,8 +14,7 @@
     "test:unit": "node scripts/run-all-tests.mjs",
     "test:live": "node scripts/run-all-tests.mjs --live",
     "typecheck": "tsc --noEmit",
-    "preelectron:build": "node node_modules/typescript/bin/tsc -p tsconfig.electron.json",
-    "electron:build": "node scripts/copy-electron-assets.mjs",
+    "electron:build": "node scripts/build-electron.mjs",
     "electron:start": "node node_modules/electron/cli.js dist-electron/electron/main.js"
   },
   "dependencies": {
@@ -31,7 +30,17 @@
     "@types/node": "^22.7.0",
     "electron": "^45.0.0",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vite": "^5.4.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@xyflow/react": "^12.3.0",
+    "dagre": "^0.8.5",
+    "framer-motion": "^11.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/dagre": "^0.7.0"
   },
   "allowScripts": {}
 }
