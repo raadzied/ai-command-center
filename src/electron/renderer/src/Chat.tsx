@@ -4,6 +4,7 @@ import type { ApprovalRequestData } from './window';
 interface ChatProps {
   onActiveAgent: (agent: string | null) => void;
   onApprovalRequest: (req: ApprovalRequestData | null) => void;
+  onTaskInfo?: ((info: { index: number; total: number } | null) => void);
 }
 
 interface MessageItem {
@@ -15,7 +16,7 @@ interface MessageItem {
   elapsedMs?: number;
 }
 
-export function Chat({ onActiveAgent, onApprovalRequest }: ChatProps): JSX.Element {
+export function Chat({ onActiveAgent, onApprovalRequest, onTaskInfo }: ChatProps): JSX.Element {
   const [messages, setMessages] = useState<MessageItem[]>([
     {
       id: 'init',
@@ -38,6 +39,15 @@ export function Chat({ onActiveAgent, onApprovalRequest }: ChatProps): JSX.Eleme
     });
   }, [onApprovalRequest]);
 
+  useEffect(() => {
+    window.api.onAgentActive((agent) => {
+      onActiveAgent(agent);
+    });
+    window.api.onTaskStart((data) => {
+      onTaskInfo?.(data);
+    });
+  }, [onActiveAgent, onTaskInfo]);
+
   const handleSubmit = async (e: FormEvent): Promise<void> => {
     e.preventDefault();
     const text = input.trim();
@@ -45,7 +55,6 @@ export function Chat({ onActiveAgent, onApprovalRequest }: ChatProps): JSX.Eleme
 
     setInput('');
     setPending(true);
-    onActiveAgent('orchestrator');
 
     const userMsgId = `user-${Date.now()}`;
     setMessages((prev) => [
@@ -55,9 +64,9 @@ export function Chat({ onActiveAgent, onApprovalRequest }: ChatProps): JSX.Eleme
 
     try {
       const result = await window.api.sendInput(text);
+      onTaskInfo?.(null);
       if (result.ok) {
         const agentName = result.agentUsed ?? 'chat';
-        onActiveAgent(agentName);
         setMessages((prev) => [
           ...prev,
           {

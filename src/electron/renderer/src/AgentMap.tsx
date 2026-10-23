@@ -5,6 +5,7 @@ import dagre from 'dagre';
 
 interface AgentMapProps {
   activeAgent: string | null;
+  taskInfo: { index: number; total: number } | null;
 }
 
 const dagreGraph = new dagre.graphlib.Graph();
@@ -74,11 +75,21 @@ function getLayoutedElements(nodes: Node[], nodesActive: string | null): { nodes
   return { nodes: layoutedNodes, edges: layoutedEdges };
 }
 
-export function AgentMap({ activeAgent }: AgentMapProps): React.JSX.Element {
+export function AgentMap({ activeAgent, taskInfo }: AgentMapProps): React.JSX.Element {
   const { nodes, edges } = useMemo(() => getLayoutedElements(initialNodes, activeAgent), [activeAgent]);
 
   return (
-    <div style={{ width: '100%', height: '100%', direction: 'ltr', background: '#060B11' }}>
+    <div style={{ width: '100%', height: '100%', direction: 'ltr', background: '#060B11', position: 'relative' }}>
+      {taskInfo?.index !== undefined && (
+        <div style={{
+          position: 'absolute', top: 12, right: 12, zIndex: 10,
+          background: '#0D1622', color: '#00E5FF',
+          border: '1px solid #00E5FF', borderRadius: 6,
+          padding: '4px 10px', fontSize: 13, fontFamily: 'monospace',
+        }}>
+          المهمة {taskInfo.index}/{taskInfo.total}
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}

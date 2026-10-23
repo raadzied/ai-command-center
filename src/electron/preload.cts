@@ -24,4 +24,12 @@ contextBridge.exposeInMainWorld('api', {
       callback(data),
     );
   },
+  onAgentActive: (cb: (agent: string | null) => void): void => {
+    ipcRenderer.removeAllListeners('agent:active');
+    ipcRenderer.on('agent:active', (_e, agent: string | null) => cb(agent));
+  },
+  onTaskStart: (cb: (data: { index: number; total: number }) => void): void => {
+    ipcRenderer.removeAllListeners('task:start');
+    ipcRenderer.on('task:start', (_e, data: { index: number; total: number }) => cb(data));
+  },
 });

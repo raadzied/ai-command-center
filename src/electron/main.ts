@@ -103,7 +103,16 @@ ipcMain.handle(
       return { ok: false, error: 'الطلب فارغ أو غير صالح' };
     }
     try {
-      const result = await processInput(text);
+      const result = await processInput(text, {
+        onAgentActive: (agent) => {
+          const wins = BrowserWindow.getAllWindows();
+          if (wins[0]) wins[0].webContents.send('agent:active', agent);
+        },
+        onTaskStart: (index, total) => {
+          const wins = BrowserWindow.getAllWindows();
+          if (wins[0]) wins[0].webContents.send('task:start', { index, total });
+        },
+      });
       return {
         ok: true,
         intent: result.intent,

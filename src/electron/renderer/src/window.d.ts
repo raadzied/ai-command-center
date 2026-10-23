@@ -26,6 +26,8 @@ declare global {
       }>;
       respondApproval: (auditId: string, approved: boolean) => void;
       onApprovalRequest: (callback: (data: ApprovalRequestData) => void) => void;
+      onAgentActive: (cb: (agent: string | null) => void) => void;
+      onTaskStart: (cb: (data: { index: number; total: number }) => void) => void;
     };
   }
 }

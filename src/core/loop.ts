@@ -60,6 +60,8 @@ export interface LoopDeps {
     user: string,
     opts?: { temperature?: number; maxTokens?: number },
   ) => Promise<string>;
+  onAgentActive?: (agentName: AgentName | null) => void;
+  onTaskStart?: (index: number, total: number) => void;
 }
 
 // التبعيات الحقيقية — الافتراضي في الإنتاج
@@ -72,6 +74,8 @@ const defaultDeps: LoopDeps = {
   saveToMemory,
   enqueueSpeech,
   chat,
+  onAgentActive: () => {},
+  onTaskStart: () => {},
 };
 
 // يعالج مدخل المستخدم كاملاً (ينفّذ مخطط مهام متعددًا)
@@ -133,6 +137,7 @@ export async function processInput(
     const task = ordered[i];
     if (!task) continue;
 
+    deps.onTaskStart?.(i + 1, ordered.length);
     const taskStart = Date.now();
 
     try {
@@ -140,6 +145,8 @@ export async function processInput(
       if (!agent) {
         throw new Error('لا وكيل مناسب لهذه المهمة');
       }
+
+      deps.onAgentActive?.(agent.name);
 
       // مرّر مخرج المهمة السابقة كسياق
       const enrichedTask =
@@ -314,6 +321,7 @@ export async function processInput(
         error: msg,
         elapsedMs: Date.now() - taskStart,
       });
+        deps.onAgentActive?.(null);
     }
   }
   const combined = parts.join('\n\n');
@@ -339,6 +347,7 @@ export async function processInput(
   // حفظ واحد لكل مدخل: نص المستخدم الأصلي + الرد المُجمَّع النهائي
   await deps.saveToMemory(trimmed, result.content, lastAgent);
 
-  deps.enqueueSpeech(result.content, result.agentUsed);
-  return result;
-}
+    deps.enqueueSpeech(result.content, result.agentUsed);
+    deps.onAgentActive?.(null);
+    return result;
+  }

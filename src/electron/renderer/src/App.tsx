@@ -7,6 +7,7 @@ import type { ApprovalRequestData } from './window';
 export function App(): React.JSX.Element {
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequestData | null>(null);
+  const [taskInfo, setTaskInfo] = useState<{ index: number; total: number } | null>(null);
 
   const handleRespondApproval = (approved: boolean): void => {
     if (approvalRequest) {
@@ -23,11 +24,12 @@ export function App(): React.JSX.Element {
       </header>
       <div className="app-body">
         <div className="map-panel">
-          <AgentMap activeAgent={activeAgent} />
+          <AgentMap activeAgent={activeAgent} taskInfo={taskInfo} />
         </div>
         <div className="chat-panel">
           <Chat
             onActiveAgent={setActiveAgent}
+            onTaskInfo={setTaskInfo}
             onApprovalRequest={setApprovalRequest}
           />
         </div>
