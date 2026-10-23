@@ -9,6 +9,7 @@ import { evaluateQuality, MAX_RETRIES } from './quality-gate.js';
 import { processMarkers } from '../tools/markers.js';
 import { validateTscFiles } from '../tools/tsc-validate.js';
 import { enqueueSpeech } from '../voice/state.js';
+import type { TaskSummary } from '../types.js';
 
 // رد عام للدردشة العادية
 const CHAT_SYSTEM = `أنت مساعد في AI Command Center.
@@ -23,6 +24,8 @@ export interface LoopResult {
   agentUsed: string | null;
   content: string;
   elapsedMs: number;
+  // تفصيل المهام في خطة متعددة (اختياري)
+  taskSummary?: TaskSummary[];
 }
 
 // يعالج مدخل المستخدم كاملاً (ينفّذ مخطط مهام متعددًا)
@@ -71,6 +74,7 @@ export async function processInput(input: string): Promise<LoopResult> {
   log.info('Executing task graph', { total: ordered.length });
 
   const parts: string[] = [];
+  const summaries: TaskSummary[] = [];
   let prevOutput = '';
   let lastAgent: string | null = null;
   let anyUnverified = false;
@@ -79,169 +83,202 @@ export async function processInput(input: string): Promise<LoopResult> {
     const task = ordered[i];
     if (!task) continue;
 
-    const agent = selectAgent(task);
-    if (!agent) {
-      parts.push(`[مهمة ${i + 1}] لا وكيل مناسب`);
-      continue;
-    }
+    const taskStart = Date.now();
 
-    // مرّر مخرج المهمة السابقة كسياق
-    const enrichedTask =
-      prevOutput.length > 0
-        ? {
-            ...task,
-            description: `${task.description}\n\n# نتائج المهام السابقة:\n${prevOutput}`,
-          }
-        : task;
-
-    log.info('Task start', {
-      index: i + 1,
-      of: ordered.length,
-      agent: agent.name,
-    });
-
-    let output = await agent.execute(enrichedTask, context);
-    let attempts = 0;
-    let unverified = false;
-
-    // Quality Gate
-    while (attempts < MAX_RETRIES) {
-      const failureReason = output.content.includes('⚠️ [الرد مقطوع')
-        ? ('MAX_TOKENS' as const)
-        : undefined;
-
-      if (failureReason) {
-        log.warn('Detected truncation', {
-          reason: failureReason,
-          agent: agent.name,
-        });
+    try {
+      const agent = selectAgent(task);
+      if (!agent) {
+        throw new Error('لا وكيل مناسب لهذه المهمة');
       }
 
-      const quality = await evaluateQuality({
+      // مرّر مخرج المهمة السابقة كسياق
+      const enrichedTask =
+        prevOutput.length > 0
+          ? {
+              ...task,
+              description: `${task.description}\n\n# نتائج المهام السابقة:\n${prevOutput}`,
+            }
+          : task;
+
+      log.info('Task start', {
+        index: i + 1,
+        of: ordered.length,
         agent: agent.name,
-        task: enrichedTask.description,
-        output: output.content,
-        ...(failureReason ? { failureReason } : {}),
       });
 
-      if (quality.status === 'PASS') break;
+      let output = await agent.execute(enrichedTask, context);
+      let attempts = 0;
+      let unverified = false;
 
-      if (quality.status === 'FAIL') {
-        attempts++;
-        const issuesText = quality.issues
-          .map((it) => `- ${it.description}`)
-          .join('\n');
+      // Quality Gate
+      while (attempts < MAX_RETRIES) {
+        const failureReason = output.content.includes('⚠️ [الرد مقطوع')
+          ? ('MAX_TOKENS' as const)
+          : undefined;
 
-        const revisedTask = {
-          ...enrichedTask,
-          description: `${enrichedTask.description}\n\n# ملاحظات المراجع:\n${issuesText}\n\nحسّن ردك.`,
-        };
-        output = await agent.execute(revisedTask, context);
-
-        if (attempts >= MAX_RETRIES) {
-          const attemptsMade = MAX_RETRIES + 1;
-          log.warn('Retries exhausted', {
+        if (failureReason) {
+          log.warn('Detected truncation', {
+            reason: failureReason,
             agent: agent.name,
-            attempts: attemptsMade,
           });
-          // output الحالي يُعرض مع وسم واضح أدناه
-          break;
         }
-        continue;
-      }
 
-      // REVIEW_ERROR
-      if (task.verificationRequired) {
-        parts.push(
-          `[مهمة ${i + 1}] ⚠️ تعذّر التحقق — لم يُعرض مخرج.`,
-        );
-        prevOutput = '';
-        continue;
-      }
-      unverified = true;
-      break;
-    }
-
-    if (unverified) anyUnverified = true;
-    lastAgent = agent.name;
-
-    // وسم المهمة المتعددة
-    const header =
-      ordered.length > 1
-        ? `─── المهمة ${i + 1}: ${task.description.split('\n')[0]} ───\n`
-        : '';
-
-    // عالج markers الكتابة من رد Coder
-    // (prevOutput و saveToMemory أدناه يستخدمان output.content
-    // الخام — حتى تعرف المهام التالية أن ملفًا كُتب)
-    let displayContent = output.content;
-    if (agent.name === 'coder') {
-      const markerResult = await processMarkers(output.content);
-      displayContent =
-        markerResult.cleanedContent + markerResult.writeStatus;
-      if (markerResult.totalMarkers > 0) {
-        log.info('Markers processed', {
-          total: markerResult.totalMarkers,
-          wrote: markerResult.wroteCount,
-          rejected: markerResult.rejectedCount,
+        const quality = await evaluateQuality({
+          agent: agent.name,
+          task: enrichedTask.description,
+          output: output.content,
+          ...(failureReason ? { failureReason } : {}),
         });
+
+        if (quality.status === 'PASS') break;
+
+        if (quality.status === 'FAIL') {
+          attempts++;
+          const issuesText = quality.issues
+            .map((it) => `- ${it.description}`)
+            .join('\n');
+
+          const revisedTask = {
+            ...enrichedTask,
+            description: `${enrichedTask.description}\n\n# ملاحظات المراجع:\n${issuesText}\n\nحسّن ردك.`,
+          };
+          output = await agent.execute(revisedTask, context);
+
+          if (attempts >= MAX_RETRIES) {
+            const attemptsMade = MAX_RETRIES + 1;
+            log.warn('Retries exhausted', {
+              agent: agent.name,
+              attempts: attemptsMade,
+            });
+            // output الحالي يُعرض مع وسم واضح أدناه
+            break;
+          }
+          continue;
+        }
+
+        // REVIEW_ERROR
+        if (task.verificationRequired) {
+          throw new Error('تعذّر التحقق من المخرج (REVIEW_ERROR)');
+        }
+        unverified = true;
+        break;
       }
 
-      // فحص tsc لكل ملفات .ts المكتوبة.
-      // ملاحظة: tsconfig يفحص src/**/* فقط، فملف خارج src/ قد لا
-      // تُلتقط أخطاؤه — لكن FIX 1 في markers.ts يمنع كتابة .ts خارج
-      // src/ أو scripts/ أصلاً.
-      if (markerResult.wrotePaths.length > 0) {
-        const tsFiles = markerResult.wrotePaths.filter(
-          (p) => p.endsWith('.ts') || p.endsWith('.tsx'),
-        );
-        if (tsFiles.length > 0) {
-          const tscResult = validateTscFiles(tsFiles);
-          if (!tscResult.ok) {
-            const errLines = tscResult.errors
-              .slice(0, 5)
-              .map((e) => `  ${e}`)
-              .join('\n');
-            displayContent +=
-              `\n\n⚠️ الملفات المكتوبة تكسر tsc:\n${errLines}\n` +
-              `   أصلحها قبل البناء.`;
-            log.warn('Generated files break tsc', {
-              count: tscResult.errors.length,
-            });
+      if (unverified) anyUnverified = true;
+      lastAgent = agent.name;
+
+      // وسم المهمة المتعددة
+      const header =
+        ordered.length > 1
+          ? `─── المهمة ${i + 1}: ${task.description.split('\n')[0]} ───\n`
+          : '';
+
+      // عالج markers الكتابة من رد Coder
+      // (prevOutput و saveToMemory أدناه يستخدمان output.content
+      // الخام — حتى تعرف المهام التالية أن ملفًا كُتب)
+      let displayContent = output.content;
+      if (agent.name === 'coder') {
+        const markerResult = await processMarkers(output.content);
+        displayContent =
+          markerResult.cleanedContent + markerResult.writeStatus;
+        if (markerResult.totalMarkers > 0) {
+          log.info('Markers processed', {
+            total: markerResult.totalMarkers,
+            wrote: markerResult.wroteCount,
+            rejected: markerResult.rejectedCount,
+          });
+        }
+
+        // فحص tsc لكل ملفات .ts المكتوبة.
+        // ملاحظة: tsconfig يفحص src/**/* فقط، فملف خارج src/ قد لا
+        // تُلتقط أخطاؤه — لكن FIX 1 في markers.ts يمنع كتابة .ts خارج
+        // src/ أو scripts/ أصلاً.
+        if (markerResult.wrotePaths.length > 0) {
+          const tsFiles = markerResult.wrotePaths.filter(
+            (p) => p.endsWith('.ts') || p.endsWith('.tsx'),
+          );
+          if (tsFiles.length > 0) {
+            const tscResult = validateTscFiles(tsFiles);
+            if (!tscResult.ok) {
+              const errLines = tscResult.errors
+                .slice(0, 5)
+                .map((e) => `  ${e}`)
+                .join('\n');
+              displayContent +=
+                `\n\n⚠️ الملفات المكتوبة تكسر tsc:\n${errLines}\n` +
+                `   أصلحها قبل البناء.`;
+              log.warn('Generated files break tsc', {
+                count: tscResult.errors.length,
+              });
+            }
           }
         }
       }
-    }
 
-    let finalContent = displayContent;
-    if (attempts >= MAX_RETRIES && !unverified) {
-      // آخر تقييم كان FAIL — أضف وسم واضح
-      const warning =
-        `⚠️ [الرد لم يجتز المراجعة بعد ${MAX_RETRIES + 1} محاولات — ` +
-        `قد يكون غير كامل]\n\n`;
-      finalContent = warning + finalContent;
-    }
-    parts.push(header + finalContent);
+      let finalContent = displayContent;
+      if (attempts >= MAX_RETRIES && !unverified) {
+        // آخر تقييم كان FAIL — أضف وسم واضح
+        const warning =
+          `⚠️ [الرد لم يجتز المراجعة بعد ${MAX_RETRIES + 1} محاولات — ` +
+          `قد يكون غير كامل]\n\n`;
+        finalContent = warning + finalContent;
+      }
+      parts.push(header + finalContent);
 
-    // احفظ كل مهمة كسياق للمهمة التالية وللذاكرة
-    prevOutput = output.content;
+      // احفظ كل مهمة كسياق للمهمة التالية وللذاكرة
+      prevOutput = output.content;
 
-    await saveToMemory(
-      `[${task.id}] ${task.description}`,
-      output.content,
-      agent.name,
-    );
+      await saveToMemory(
+        `[${task.id}] ${task.description}`,
+        output.content,
+        agent.name,
+      );
 
-    // استخرج مهارة إن كان Mentor ولم يكن unverified
-    if (agent.name === 'mentor' && !unverified) {
-      await extractAndSaveSkill(task.description, output.content);
+      // استخرج مهارة إن كان Mentor ولم يكن unverified
+      if (agent.name === 'mentor' && !unverified) {
+        await extractAndSaveSkill(task.description, output.content);
+      }
+
+      summaries.push({
+        id: task.id,
+        agentName: task.agentName,
+        status: 'done',
+        elapsedMs: Date.now() - taskStart,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log.error('Task failed', {
+        taskId: task.id,
+        agent: task.agentName,
+        message: msg,
+      });
+
+      parts.push(
+        `─── المهمة ${i + 1}/${ordered.length}: ${task.description.split('\n')[0]} ───\n` +
+        `❌ فشلت: ${msg}`,
+      );
+      prevOutput = '';
+
+      summaries.push({
+        id: task.id,
+        agentName: task.agentName,
+        status: 'failed',
+        error: msg,
+        elapsedMs: Date.now() - taskStart,
+      });
     }
   }
-
   const combined = parts.join('\n\n');
-  const content = anyUnverified
+  let content = anyUnverified
     ? `⚠️ [بعض الردود غير مُتحققة — تعذّر تشغيل المراجع]\n\n${combined}`
     : combined;
+
+  const failed = summaries.filter((s) => s.status === 'failed');
+  if (failed.length > 0) {
+    content +=
+      `\n\n⚠️ فشلت ${failed.length}/${summaries.length} مهمة:\n` +
+      failed.map((s) => `  • ${s.id}: ${s.error}`).join('\n');
+  }
 
   const result: LoopResult = {
     intent: plan.intent,
@@ -249,6 +286,7 @@ export async function processInput(input: string): Promise<LoopResult> {
     content,
     elapsedMs: Date.now() - start,
   };
+  if (summaries.length > 1) result.taskSummary = summaries;
 
   enqueueSpeech(result.content, result.agentUsed);
   return result;

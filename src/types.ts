@@ -25,6 +25,15 @@ export interface AgentResult {
   timestamp: Date;
 }
 
+// ملخص مهمة واحدة في الخطة
+export interface TaskSummary {
+  id: string;
+  agentName: AgentName;
+  status: 'done' | 'failed';
+  error?: string;
+  elapsedMs: number;
+}
+
 // ملف أو قرار أو مهارة ينتجها وكيل
 export interface Artifact {
   type: 'file' | 'code' | 'decision' | 'skill';

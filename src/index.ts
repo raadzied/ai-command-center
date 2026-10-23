@@ -227,6 +227,23 @@ async function main(): Promise<void> {
         console.log(
           `[${result.agentUsed ?? 'chat'}] ${result.elapsedMs}ms${flag}`,
         );
+        if (result.taskSummary && result.taskSummary.length > 0) {
+          const failed = result.taskSummary.filter(
+            (s) => s.status === 'failed',
+          );
+          if (failed.length > 0) {
+            console.log('');
+            console.log('📊 ملخص المهام:');
+            for (const s of result.taskSummary) {
+              const icon = s.status === 'done' ? '✅' : '❌';
+              const info =
+                s.status === 'done'
+                  ? `${s.elapsedMs}ms`
+                  : s.error ?? 'unknown';
+              console.log(`  ${icon} ${s.id} (${s.agentName}): ${info}`);
+            }
+          }
+        }
         console.log('');
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
