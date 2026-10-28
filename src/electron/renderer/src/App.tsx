@@ -4,18 +4,11 @@ import { Chat } from './Chat';
 import { ApprovalModal } from './ApprovalModal';
 import type { ApprovalRequestData } from './window';
 
-interface VoiceStatus {
-  active: boolean;
-  listening: boolean;
-  speaking: boolean;
-}
-
 export function App(): React.JSX.Element {
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [taskInfo, setTaskInfo] = useState<{ index: number; total: number } | null>(null);
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequestData | null>(null);
   const [voiceOn, setVoiceOn] = useState<boolean>(true);
-  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>({ active: true, listening: false, speaking: false });
 
   // الطابور ومشغل الصوت
   const audioQueueRef = useRef<Array<{ base64Mp3: string; agentName: string | null }>>([]);
@@ -40,20 +33,10 @@ export function App(): React.JSX.Element {
   const handleToggleVoice = async (): Promise<void> => {
     const next = await window.api.toggleVoice(!voiceOn);
     setVoiceOn(next);
-    setVoiceStatus((prev) => ({ ...prev, active: next }));
   };
 
   const handleStopVoice = async (): Promise<void> => {
     await window.api.stopVoice();
-    setVoiceStatus((prev) => ({ ...prev, speaking: false, listening: false }));
-  };
-
-  const handleStartListening = async (): Promise<void> => {
-    setVoiceStatus((prev) => ({ ...prev, listening: true, speaking: false }));
-  };
-
-  const handleStopListening = async (): Promise<void> => {
-    setVoiceStatus((prev) => ({ ...prev, listening: false }));
   };
 
   // جلب حالة الصوت عند التحميل
@@ -61,6 +44,32 @@ export function App(): React.JSX.Element {
     if (window.api?.getVoiceStatus) {
       void window.api.getVoiceStatus().then((status: boolean) => setVoiceOn(status));
     }
+  }, []);
+
+  const playNextInQueue = useCallback((): void => {
+    if (isPlayingRef.current) return;
+    const next = audioQueueRef.current.shift();
+    if (!next) return;
+    isPlayingRef.current = true;
+    const audio = new Audio(`data:audio/mp3;base64,${next.base64Mp3}`);
+    if (next.agentName === 'coder') audio.playbackRate = 1.12;
+    else if (next.agentName === 'designer') audio.playbackRate = 1.05;
+    else audio.playbackRate = 1.0;
+    currentAudioRef.current = audio;
+    audio.onended = () => {
+      isPlayingRef.current = false;
+      currentAudioRef.current = null;
+      playNextInQueue();
+    };
+    audio.onerror = () => {
+      isPlayingRef.current = false;
+      currentAudioRef.current = null;
+      playNextInQueue();
+    };
+    void audio.play().catch(() => {
+      isPlayingRef.current = false;
+      currentAudioRef.current = null;
+    });
   }, []);
 
   // مستمع الصوت القادم من Electron
@@ -78,7 +87,6 @@ export function App(): React.JSX.Element {
         currentAudioRef.current = null;
       }
       isPlayingRef.current = false;
-      setVoiceStatus((prev) => ({ ...prev, speaking: false }));
     };
     window.api?.onVoiceStop?.(stopCb);
 
@@ -90,114 +98,65 @@ export function App(): React.JSX.Element {
       }
       isPlayingRef.current = false;
     };
-  }, []);
-
-  const playNextInQueue = useCallback((): void => {
-    if (isPlayingRef.current) return;
-    const next = audioQueueRef.current.shift();
-    if (!next) {
-      setVoiceStatus((prev) => ({ ...prev, speaking: false }));
-      return;
-    }
-    isPlayingRef.current = true;
-    setVoiceStatus((prev) => ({ ...prev, speaking: true }));
-    const audio = new Audio(`data:audio/mp3;base64,${next.base64Mp3}`);
-    if (next.agentName === 'coder') audio.playbackRate = 1.12;
-    else if (next.agentName === 'designer') audio.playbackRate = 1.05;
-    else audio.playbackRate = 1.0;
-    currentAudioRef.current = audio;
-    audio.onended = () => {
-      isPlayingRef.current = false;
-      currentAudioRef.current = null;
-      setVoiceStatus((prev) => ({ ...prev, speaking: false }));
-      playNextInQueue();
-    };
-    audio.onerror = () => {
-      isPlayingRef.current = false;
-      currentAudioRef.current = null;
-      setVoiceStatus((prev) => ({ ...prev, speaking: false }));
-      playNextInQueue();
-    };
-    void audio.play().catch(() => {
-      isPlayingRef.current = false;
-      currentAudioRef.current = null;
-      setVoiceStatus((prev) => ({ ...prev, speaking: false }));
-    });
-  }, []);
+  }, [playNextInQueue]);
 
   return (
     <div className="app">
-      <div className="hud">
-        <div className="hud-brand">JARVIS OS</div>
-        <div className="hud-item">
-          <span className={`hud-dot ${activeAgent ? 'busy' : 'idle'}`} />
-          {activeAgent ? `ACTIVE: ${activeAgent.toUpperCase()}` : 'IDLE'}
+      <header className="app-header">
+        <div className="hud-brand">
+          <span style={{ color: '#00E5FF', animation: 'pulse-brand 2s infinite' }}>●</span>
+          <span>مركز القيادة الذكي · AI Command Center</span>
+          <span style={{ fontSize: '10px', background: 'rgba(0, 229, 255, 0.15)', color: '#00E5FF', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(0, 229, 255, 0.3)' }}>V4.2 PRO</span>
         </div>
-        <div className="hud-item">
-          <span className={`hud-dot ${taskInfo ? 'busy' : 'idle'}`} />
-          {taskInfo ? `TASK ${taskInfo.index}/${taskInfo.total}` : 'NO TASK'}
+        <div className="hud-items">
+          <div className="hud-item">
+            <span>⚡ Gemini 2.5 + Groq Whisper</span>
+          </div>
+          <div className="hud-item">
+            <span>🧠 SQLite-Vec RAG</span>
+          </div>
+          <div className="hud-item">
+            <span className={`hud-dot ${activeAgent ? 'busy' : 'idle'}`} />
+            <span>{activeAgent ? `الوكيل: ${activeAgent.toUpperCase()}` : 'في وضع الاستعداد'}</span>
+          </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             type="button"
             onClick={() => void handleToggleVoice()}
             style={{
-              background: voiceOn ? '#0d1828' : '#1a2634',
-              color: voiceOn ? '#00e5ff' : '#8a9ab0',
-              border: `1px solid ${voiceOn ? '#00e5ff' : '#1a2634'}`,
-              borderRadius: '8px',
-              padding: '8px 16px',
+              background: voiceOn ? 'rgba(0, 229, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+              color: voiceOn ? '#00E5FF' : '#8A99AD',
+              border: `1px solid ${voiceOn ? 'rgba(0, 229, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
+              borderRadius: '6px',
+              padding: '5px 10px',
               cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 700,
+              fontSize: '11px',
               fontFamily: "'Consolas', monospace",
-              textTransform: 'uppercase',
+              fontWeight: 700,
             }}
           >
-            {voiceOn ? '🔊 الصوت: تشغيل' : '🔇 الصوت: إيقاف'}
+            {voiceOn ? '🔊 الصوت: مفعل' : '🔇 الصوت: مكتوم'}
           </button>
           <button
             type="button"
             onClick={() => void handleStopVoice()}
             style={{
-              background: '#1a2634',
-              color: '#e8f0f8',
-              border: '1px solid #1a2634',
-              borderRadius: '8px',
-              padding: '8px 14px',
+              background: 'rgba(255, 255, 255, 0.05)',
+              color: '#E0E6ED',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              borderRadius: '6px',
+              padding: '5px 8px',
               cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 700,
+              fontSize: '11px',
               fontFamily: "'Consolas', monospace",
+              fontWeight: 700,
             }}
           >
             ⏹️ إيقاف النطق
           </button>
-          <button
-            type="button"
-            onClick={() => void handleStartListening()}
-            style={{
-              background: voiceStatus.listening ? '#1a1a0a' : '#0d1828',
-              color: voiceStatus.listening ? '#ffb800' : '#00e5ff',
-              border: `1px solid ${voiceStatus.listening ? '#ffb800' : '#00e5ff'}`,
-              borderRadius: '8px',
-              padding: '8px 16px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: 800,
-              fontFamily: "'Consolas', monospace",
-              textTransform: 'uppercase',
-            }}
-          >
-            {voiceStatus.listening ? '🎙️ الاستماع...' : '🎤 البدء بالتحدث'}
-          </button>
         </div>
-        <div className="hud-spacer" />
-        <div className="hud-item small">
-          <span className={`hud-dot active`} />
-          جارفيس نشط
-        </div>
-      </div>
+      </header>
       <div className="app-body">
         <div className="map-panel">
           <AgentMap activeAgent={activeAgent} taskInfo={taskInfo} />
@@ -207,17 +166,10 @@ export function App(): React.JSX.Element {
             onActiveAgent={onAgentChange}
             onTaskInfo={onTaskChange}
             onApprovalRequest={setApprovalRequest}
-            voiceOn={voiceOn}
-            voiceStatus={voiceStatus}
-            onStartListening={handleStartListening}
-            onStopListening={handleStopListening}
           />
         </div>
       </div>
       <ApprovalModal request={approvalRequest} onRespond={handleApprovalRespond} />
-      <div className="voice-btn" onClick={() => void handleStartListening()}>
-        {voiceStatus.listening ? '🎙️' : voiceStatus.speaking ? '🔊' : '🎤'}
-      </div>
     </div>
   );
 }

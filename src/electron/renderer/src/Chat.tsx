@@ -39,7 +39,7 @@ function CodeBlock({
       <div className="code-block-header">
         <span>{language || 'text'}</span>
         <button className="code-block-copy" onClick={copy} type="button">
-          {copied ? '✓ COPIED' : 'COPY'}
+          {copied ? '✓ تم النسخ' : '📋 نسخ الكود'}
         </button>
       </div>
       <Highlight
@@ -63,6 +63,40 @@ function CodeBlock({
   );
 }
 
+function renderFormattedContent(content: string): React.JSX.Element {
+  const parts: React.ReactNode[] = [];
+  const regex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(content)) !== null) {
+    const matchIndex = match.index;
+    if (matchIndex > lastIndex) {
+      const textChunk = content.slice(lastIndex, matchIndex);
+      parts.push(
+        <ReactMarkdown key={`text-${lastIndex}`}>{textChunk}</ReactMarkdown>
+      );
+    }
+
+    const language = match[1] ?? 'text';
+    const code = match[2]?.trim() ?? '';
+    parts.push(
+      <CodeBlock key={`code-${matchIndex}`} language={language} code={code} />
+    );
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < content.length) {
+    const remaining = content.slice(lastIndex);
+    parts.push(
+      <ReactMarkdown key={`text-${lastIndex}`}>{remaining}</ReactMarkdown>
+    );
+  }
+
+  return <div className="message-body">{parts}</div>;
+}
+
 export function Chat({
   onActiveAgent,
   onTaskInfo,
@@ -71,10 +105,6 @@ export function Chat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState(false);
-  const [recording, setRecording] = useState<boolean>(false);
-  const [transcribing, setTranscribing] = useState<boolean>(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -138,50 +168,12 @@ export function Chat({
     }
   };
 
-  const toggleWhisperFlow = async (): Promise<void> => {
-    if (recording && mediaRecorderRef.current) {
-      mediaRecorderRef.current.stop();
-      setRecording(false);
-      return;
-    }
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
-      audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e: BlobEvent): void => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = async (): Promise<void> => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        const arrayBuffer = await blob.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < bytes.byteLength; i++) {
-          binary += String.fromCharCode(bytes[i] ?? 0);
-        }
-        const base64 = window.btoa(binary);
-
-        setTranscribing(true);
-        try {
-          const res = await window.api.transcribeAudio(base64);
-          if (res.ok && res.text) {
-            setInput((prev) => (prev ? `${prev} ${res.text}` : (res.text ?? '')));
-          }
-        } finally {
-          setTranscribing(false);
-        }
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setRecording(true);
-    } catch {
-      setRecording(false);
-    }
-  };
+  const quickPromptsList = [
+    '🧠 اشرح لي معمارية Microservices باختصار',
+    '💻 اكتب دالة TypeScript للبحث الثنائي',
+    '🎨 صمم نظام ألوان لواجهة لوحة تحكم',
+    '⚡ حلل فكرة تطبيق مهام ثم صمم واجهته واكتب كوده',
+  ];
 
   return (
     <>
@@ -190,103 +182,83 @@ export function Chat({
           <div style={{
             textAlign: 'center',
             color: '#4A5567',
-            marginTop: 60,
+            marginTop: 80,
             fontFamily: "'Consolas', monospace",
-            fontSize: 12,
-            letterSpacing: 1,
+            fontSize: 13,
+            letterSpacing: 1.5,
           }}>
-            ◆ COMMAND CENTER READY<br />
-            <span style={{ fontSize: 10, opacity: 0.6 }}>اكتب طلبك بالعربية للبدء</span>
+            ◆ COMMAND CENTER READY · V4.2 PRO<br />
+            <span style={{ fontSize: 11, opacity: 0.6 }}>اختر أمراً سريعاً أدناه أو اكتب طلبك بالعربية للبدء</span>
           </div>
         )}
-        {messages.map((msg, i) => (
-          <div key={i} className={`message ${msg.role}`}>
-            <div className="message-header">
-              {msg.role === 'user'
-                ? 'YOU'
-                : msg.role === 'error'
-                ? 'ERROR'
-                : (msg.meta?.agent ?? 'SYSTEM').toUpperCase()}
-            </div>
-            <div className="message-body">
+        {messages.map((msg, i) => {
+          const agentLabel = msg.meta?.agent
+            ? msg.meta.agent === 'mentor'
+              ? '🧠 المرشد · Mentor'
+              : msg.meta.agent === 'coder'
+              ? '💻 المبرمج · Coder'
+              : msg.meta.agent === 'designer'
+              ? '🎨 المصمم · Designer'
+              : `⚡ ${msg.meta.agent.toUpperCase()}`
+            : '⚡ النواة';
+
+          const timeSec = msg.meta?.elapsedMs ? `⏱️ ${(msg.meta.elapsedMs / 1000).toFixed(1)}s` : '';
+
+          return (
+            <div key={i} className={`message ${msg.role}`}>
+              <div className="message-header">
+                {msg.role === 'user'
+                  ? '👤 أنت · YOU'
+                  : msg.role === 'error'
+                  ? '❌ خطأ · ERROR'
+                  : `${agentLabel} ${timeSec}`}
+              </div>
               {msg.role === 'agent' ? (
-                <ReactMarkdown
-                  components={{
-                    code({ className, children }) {
-                      const match = /language-(\w+)/.exec(className ?? '');
-                      const isBlock = (className ?? '').includes('language-');
-                      const code = String(children).replace(/\n$/, '');
-                      if (isBlock) {
-                        return <CodeBlock language={match?.[1] ?? ''} code={code} />;
-                      }
-                      return (
-                        <code style={{
-                          background: '#0A121D',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          fontFamily: "'Consolas', monospace",
-                          fontSize: '0.9em',
-                          color: '#00E5FF',
-                        }}>
-                          {children}
-                        </code>
-                      );
-                    },
-                  }}
-                >
-                  {msg.content}
-                </ReactMarkdown>
+                renderFormattedContent(msg.content)
               ) : (
-                msg.content
+                <div className="message-body">{msg.content}</div>
+              )}
+              {msg.meta && (
+                <div className="message-meta">
+                  intent: {msg.meta.intent} {timeSec ? `· ${timeSec}` : ''}
+                </div>
               )}
             </div>
-            {msg.meta && (
-              <div className="message-meta">
-                {msg.meta.elapsedMs}ms · intent: {msg.meta.intent}
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
+
+      <div className="quick-prompts">
+        {quickPromptsList.map((promptText, idx) => (
+          <button
+            key={idx}
+            type="button"
+            className="quick-prompt-btn"
+            onClick={() => setInput(promptText)}
+            disabled={pending}
+          >
+            {promptText}
+          </button>
+        ))}
+      </div>
+
       <form className="composer" onSubmit={send}>
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.ctrlKey && e.code === 'Space') {
-              e.preventDefault();
-              void toggleWhisperFlow();
-              return;
-            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               void send(e);
             }
           }}
-          placeholder="اكتب طلبك… (Enter للإرسال)"
+          placeholder="اكتب طلبك هنا… (Enter للإرسال)"
           rows={1}
           disabled={pending}
         />
-        <button
-          type="button"
-          onClick={() => void toggleWhisperFlow()}
-          disabled={pending || transcribing}
-          title="إملاء صوتي عبر Whisper Flow (Ctrl + Space)"
-          style={{
-            background: recording ? '#FF1744' : '#132235',
-            color: recording ? '#FFFFFF' : '#00E5FF',
-            border: `1px solid ${recording ? '#FF1744' : '#00E5FF'}`, 
-            borderRadius: '8px',
-            padding: '0 14px',
-            cursor: 'pointer',
-            fontWeight: 600,
-          }}
-        >
-          {recording ? '⏹️ جاري التسجيل...' : transcribing ? '⏳ يحوّل النص...' : '🎤 Whisper'}
-        </button>
         <button type="submit" disabled={pending || !input.trim()}>
-          {pending ? '···' : 'إرسال'}
+          {pending ? '···' : 'إرسال ⚡'}
         </button>
       </form>
     </>
