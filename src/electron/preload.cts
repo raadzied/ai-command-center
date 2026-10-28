@@ -32,4 +32,21 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('task:start');
     ipcRenderer.on('task:start', (_e, data: { index: number; total: number }) => cb(data));
   },
+  getVoiceStatus: (): Promise<boolean> => ipcRenderer.invoke('voice:status'),
+  toggleVoice: (enabled?: boolean): Promise<boolean> => ipcRenderer.invoke('voice:toggle', enabled),
+  stopVoice: (): Promise<void> => ipcRenderer.invoke('voice:stop'),
+  // دوال الصوت الجديد
+  onVoiceAudio: (cb: (data: { base64Mp3: string; agentName: string | null }) => void): void => {
+    ipcRenderer.removeAllListeners('voice:audio');
+    ipcRenderer.on('voice:audio', (_e, data: { base64Mp3: string; agentName: string | null }) => cb(data));
+  },
+  onVoiceStop: (cb: () => void): void => {
+    ipcRenderer.removeAllListeners('voice:stop-audio');
+    ipcRenderer.on('voice:stop-audio', () => cb());
+  },
+  // دوال Whisper Flow الجديد
+  transcribeAudio: (
+    base64Audio: string,
+  ): Promise<{ ok: boolean; text?: string; error?: string }> =>
+    ipcRenderer.invoke('voice:transcribe', base64Audio),
 });

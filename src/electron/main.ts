@@ -1,11 +1,14 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import 'dotenv/config';
+import { app, BrowserWindow, ipcMain, session } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { initDb, closeDb } from '../memory/db.js';
 import { processInput } from '../core/loop.js';
 import { setApprovalStrategy } from '../security/approval.js';
 import { logger as log } from '../llm/logger.js';
+import { isVoiceEnabled, setVoiceEnabled, cancelSpeech } from '../voice/state.js';
 import type { ApprovalDecision, ClassifiedAction } from '../types.js';
+import { transcribeWithWhisperFlow } from '../voice/whisper.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -127,6 +130,59 @@ ipcMain.handle(
     }
   },
 );
+
+ipcMain.handle('voice:status', (): boolean => {
+  return isVoiceEnabled();
+});
+
+ipcMain.handle('voice:toggle', (_event, enabled: unknown): boolean => {
+  const next = typeof enabled === 'boolean' ? enabled : !isVoiceEnabled();
+  setVoiceEnabled(next);
+  if (!next) cancelSpeech();
+  return isVoiceEnabled();
+});
+
+ipcMain.handle('voice:stop', (): void => {
+  cancelSpeech();
+  const wins = BrowserWindow.getAllWindows();
+  if (wins[0] && !wins[0].isDestroyed()) {
+    wins[0].webContents.send('voice:stop-audio');
+  }
+});
+
+ipcMain.handle('voice:transcribe', async (_event, base64Audio: unknown): Promise<{ ok: boolean; text?: string; error?: string }> => {
+  if (typeof base64Audio !== 'string' || !base64Audio.trim()) {
+    return { ok: false, error: 'بيانات الصوت غير صالحة' };
+  }
+  try {
+    const text = await transcribeWithWhisperFlow(base64Audio);
+    return { ok: true, text };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: message };
+  }
+});
+
+// تصدير بث الصوت من voice/tts.ts إلى Electron
+import { setElectronAudioEmitter } from '../voice/tts.js';
+
+setVoiceEnabled(true);
+setElectronAudioEmitter((payload) => {
+  const wins = BrowserWindow.getAllWindows();
+  if (wins[0] && !wins[0].isDestroyed()) {
+    wins[0].webContents.send('voice:audio', payload);
+  }
+});
+
+// طلب صلاحية الميكروفون لحاليًا
+void app.whenReady().then((): void => {
+  const wins = BrowserWindow.getAllWindows();
+  if (wins[0]) {
+    wins[0].webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
+      callback(permission === 'media');
+    });
+  }
+});
 
 async function createWindow(): Promise<void> {
   const win = new BrowserWindow({

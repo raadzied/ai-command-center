@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import type { ApprovalRequestData } from './window';
 
 interface ApprovalModalProps {
@@ -6,35 +6,59 @@ interface ApprovalModalProps {
   onRespond: (approved: boolean) => void;
 }
 
-export function ApprovalModal({ request, onRespond }: ApprovalModalProps): React.JSX.Element | null {
+function riskClass(risk: string): string {
+  if (risk === 'dangerous') return 'risk-high';
+  if (risk === 'review') return 'risk-medium';
+  return 'risk-low';
+}
+
+export function ApprovalModal({
+  request,
+  onRespond,
+}: ApprovalModalProps): React.JSX.Element | null {
+  useEffect(() => {
+    if (!request) return;
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        onRespond(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [request, onRespond]);
+
   if (!request) return null;
 
   const { action } = request;
+  const risk = riskClass(action.risk);
 
   return (
-    <div className="approval-modal">
-      <div className="approval-content">
-        <h2>⚠️ عملية تحتاج موافقتك</h2>
-        <div className="approval-details">
-          <div><strong>النوع:</strong> <span>{action.type}</span></div>
-          <div><strong>الهدف:</strong> <span>{action.target}</span></div>
-          <div><strong>السبب:</strong> <span>{action.reason}</span></div>
-          <div><strong>التصنيف:</strong> <span>{action.explanation}</span></div>
+    <div className="modal-overlay" onClick={() => onRespond(false)}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className={`modal-header ${risk}`}>
+          <span className="modal-title">⚠ APPROVAL REQUIRED</span>
+          <span className={`risk-badge ${risk}`}>{action.risk}</span>
         </div>
-        <div className="approval-buttons">
-          <button
-            type="button"
-            className="btn-approve"
-            onClick={() => onRespond(true)}
-          >
-            موافقة
+        <div className="modal-body">
+          <div className="modal-detail">
+            <span className="modal-detail-label">Action</span>
+            <span className="modal-detail-value">{action.type}</span>
+            <span className="modal-detail-label">Target</span>
+            <span className="modal-detail-value">{action.target}</span>
+            <span className="modal-detail-label">Reason</span>
+            <span className="modal-detail-value">{action.reason}</span>
+          </div>
+          <div className="modal-explanation">
+            {action.explanation}
+          </div>
+        </div>
+        <div className="modal-actions">
+          <span className="hint-esc">ESC = REJECT</span>
+          <button className="btn btn-reject" onClick={() => onRespond(false)}>
+            REJECT
           </button>
-          <button
-            type="button"
-            className="btn-deny"
-            onClick={() => onRespond(false)}
-          >
-            رفض
+          <button className="btn btn-approve" onClick={() => onRespond(true)}>
+            APPROVE
           </button>
         </div>
       </div>

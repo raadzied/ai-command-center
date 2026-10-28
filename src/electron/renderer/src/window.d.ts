@@ -28,6 +28,12 @@ declare global {
       onApprovalRequest: (callback: (data: ApprovalRequestData) => void) => void;
       onAgentActive: (cb: (agent: string | null) => void) => void;
       onTaskStart: (cb: (data: { index: number; total: number }) => void) => void;
+      getVoiceStatus: () => Promise<boolean>;
+      toggleVoice: (enabled?: boolean) => Promise<boolean>;
+      stopVoice: () => Promise<void>;
+      // دوال الصوت الجديد
+      onVoiceAudio: (cb: (data: { base64Mp3: string; agentName: string | null }) => void) => void;
+      onVoiceStop: (cb: () => void) => void;
     };
   }
 }

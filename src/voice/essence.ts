@@ -59,6 +59,9 @@ const GREETING_PATTERNS: RegExp[] = [
   /^(في البداية|للبدء|دعنا نبدأ|لنبدأ)/u,
 ];
 
+// عتبة الأحرف الدنيا للجوهر المستخرج
+export const DEFAULT_MIN_CHARS = 4;
+
 function isGreeting(sentence: string): boolean {
   const trimmed = sentence.trim();
   return GREETING_PATTERNS.some((p) => p.test(trimmed));
@@ -119,7 +122,7 @@ export function extractEssence(
 ): string {
   const maxSentences = options.maxSentences ?? 2;
   const maxChars = options.maxChars ?? 300;
-  const minChars = options.minChars ?? 30;
+  const minChars = options.minChars ?? DEFAULT_MIN_CHARS;
 
   // 1) تنظيف
   const cleaned = cleanText(text);
@@ -135,16 +138,15 @@ export function extractEssence(
     return '';
   }
 
-  const sentences = meaningful.filter((s) => !isGreeting(s));
-  if (sentences.length === 0) {
-    log.info('Essence: only greetings after filtering');
-    return '';
-  }
+  // 3) تصفية الجمل الترحيبية — نحتفظ بالجمل غير الترحيبية فقط
+  const nonGreeting = meaningful.filter((s) => !isGreeting(s));
+  // إذا كانت المصفوفة مصفوفة فارغة (كل شيء ترحيب)، لا نفقد الجمل الأصلية، نحتفظ بها
+  const sentences = nonGreeting.length > 0 ? nonGreeting : meaningful.slice(0, maxSentences);
 
-  // 3) أول N جملة
+  // 4) أول N جملة
   let essence = sentences.slice(0, maxSentences).join(' ');
 
-  // 4) حد أقصى للأحرف — عند آخر مسافة
+  // 5) حد أقصى للأحرف — عند آخر مسافة
   if (essence.length > maxChars) {
     const cut = essence.slice(0, maxChars);
     const lastSpace = cut.lastIndexOf(' ');
@@ -154,10 +156,14 @@ export function extractEssence(
         : cut + '…';
   }
 
-  // 5) قصير جدًا → تجاهل
+  // 6) قصير جدًا → تجاهل، لكن احتفظ برد افتراضي إذا كان النص الأصلي موجوداً
   if (essence.length < minChars) {
     log.info('Essence: too short', { length: essence.length });
-    return '';
+    if (!text.trim()) return '';
+    if (text.includes('```')) {
+      return 'تم إعداد الكود البرمجي المطلوب بنجاح.';
+    }
+    return cleaned.slice(0, 200);
   }
 
   log.info('Essence extracted', {

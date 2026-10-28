@@ -2,7 +2,7 @@ import { logger as log } from '../llm/logger.js';
 import { speak, killCurrentPlayback } from './tts.js';
 import { extractEssence } from './essence.js';
 
-let voiceEnabled = false;
+let voiceEnabled = true;
 let cancelled = false;
 let speechChain: Promise<void> = Promise.resolve();
 

@@ -289,10 +289,16 @@ export async function processInput(
       // احفظ المخرج الخام كسياق للمهمة التالية (لا يُحفظ في الذاكرة هنا)
       prevOutput = output.content;
 
+      // نطق جوهر المهمة فوراً
+      deps.enqueueSpeech(finalContent, agent.name);
+
       // استخرج مهارة إن كان Mentor ولم يكن unverified
       if (agent.name === 'mentor' && !unverified) {
         await extractAndSaveSkill(task.description, output.content);
       }
+
+      // نطق مخرجات الوكيل
+      deps.enqueueSpeech(output.content, agent.name);
 
       summaries.push({
         id: task.id,
@@ -347,7 +353,6 @@ export async function processInput(
   // حفظ واحد لكل مدخل: نص المستخدم الأصلي + الرد المُجمَّع النهائي
   await deps.saveToMemory(trimmed, result.content, lastAgent);
 
-    deps.enqueueSpeech(result.content, result.agentUsed);
-    deps.onAgentActive?.(null);
-    return result;
+  deps.onAgentActive?.(null);
+  return result;
   }
