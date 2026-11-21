@@ -12,7 +12,6 @@ export function createAudio(): ApexAudioApi {
   let ctx: AudioContext | null = null;
   let master: GainNode | null = null;
   let humOsc: OscillatorNode | null = null;
-  let humCompanion: OscillatorNode | null = null;
   let humGain: GainNode | null = null;
   let enabled = true;
   let booted = false;
@@ -68,7 +67,6 @@ export function createAudio(): ApexAudioApi {
       companion.start();
 
       humOsc = osc;
-      humCompanion = companion;
       humGain = gain;
     } catch (error) {
       console.error('[apex-audio] hum failed', error);

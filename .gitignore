@@ -20,6 +20,7 @@ data/
 # Build output
 dist/
 dist-electron/
+dist-renderer/
 build/
 *.tsbuildinfo
 

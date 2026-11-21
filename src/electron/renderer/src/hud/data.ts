@@ -47,6 +47,7 @@ export const AGENTS: AgentNode[] = [
   },
   {
     id: 'designer',
+    name: 'Designer',
     active: true,
     icon: ICONS.designer ?? '',
     role: 'Tactical UI & Visual Architect',
@@ -55,6 +56,7 @@ export const AGENTS: AgentNode[] = [
   },
   {
     id: 'advisor',
+    name: 'Advisor',
     active: true,
     icon: ICONS.advisor ?? '',
     role: 'Security & Strategy Auditor',
@@ -63,6 +65,7 @@ export const AGENTS: AgentNode[] = [
   },
   {
     id: 'browser',
+    name: 'Browser',
     active: true,
     icon: ICONS.browser ?? '',
     role: 'Playwright Automation Agent',
@@ -71,6 +74,7 @@ export const AGENTS: AgentNode[] = [
   },
   {
     id: 'commander',
+    name: 'Commander',
     active: true,
     icon: ICONS.commander ?? '',
     role: 'Local System & IPC Executor',

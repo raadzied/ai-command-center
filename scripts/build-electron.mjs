@@ -17,6 +17,7 @@ function run(label, args) {
 }
 
 if (run('tsc', ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.electron.json']) !== 0) process.exit(1);
+if (run('tsc (renderer)', ['node_modules/typescript/bin/tsc', '-p', 'src/electron/renderer/tsconfig.json', '--noEmit']) !== 0) process.exit(1);
 if (run('vite build', ['node_modules/vite/bin/vite.js', 'build', '--config', 'src/electron/renderer/vite.config.ts']) !== 0) process.exit(1);
 
 const assets = [{ from: 'src/memory/schema.sql', to: 'dist-electron/memory/schema.sql' }];
