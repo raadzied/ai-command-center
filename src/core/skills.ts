@@ -79,14 +79,14 @@ export async function extractAndSaveSkill(
     const db = getDb();
     const similar = retrieveSkills(db, candidateVec, 1);
 
-  const top = similar[0];
-  if (top && top.distance < DUPLICATE_THRESHOLD) {
-    log.info('Skill already exists, skipping', {
-      existing: top.name,
-      distance: top.distance.toFixed(3),
-    });
-    return;
-  }
+    const top = similar[0];
+    if (top && top.distance < DUPLICATE_THRESHOLD) {
+      log.info('Skill already exists, skipping', {
+        existing: top.name,
+        distance: top.distance.toFixed(3),
+      });
+      return;
+    }
 
     saveSkill(db, {
       name: data.name,

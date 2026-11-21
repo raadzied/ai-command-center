@@ -36,7 +36,7 @@ export async function transcribeWithWhisperFlow(base64Audio: string): Promise<st
   const res = await fetch(GROQ_TRANSCRIBE_URL, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`, // إزالة Content-Type لأن FormData بإضافته
+      Authorization: `Bearer ${apiKey}`,
     },
     body: form,
     signal: AbortSignal.timeout(20000),

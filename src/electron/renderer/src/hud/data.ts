@@ -1,0 +1,112 @@
+import type { AgentNode, MemoryEntry, McpServer, ResourceNode, SystemLog } from './types';
+
+/** Monochrome geometric SVG icons (no emoji, stroke based). */
+export const ICONS: Record<string, string> = {
+  orchestrator: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M2 12h3M19 12h3M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12"></path></svg>`,
+  coder: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline><line x1="14" y1="4" x2="10" y2="20"></line></svg>`,
+  designer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>`,
+  advisor: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>`,
+  browser: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`,
+  commander: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
+  sqlite: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>`,
+  context: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="7" y1="6.5" x2="7.01" y2="6.5"></line><line x1="10" y1="6.5" x2="10.01" y2="6.5"></line></svg>`,
+  mcp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="7" rx="1.5"></rect><rect x="2" y="14" width="20" height="7" rx="1.5"></rect><line x1="6" y1="6.5" x2="6.01" y2="6.5"></line><line x1="6" y1="17.5" x2="6.01" y2="17.5"></line></svg>`,
+  filesystem: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>`,
+  voice: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>`,
+  telemetry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><polyline points="7 12 10 12 11.5 9 13 15 14.5 12 17 12"></polyline></svg>`,
+};
+
+/** Left wing — seven agent nodes. */
+export const AGENTS: AgentNode[] = [
+  {
+    id: 'orchestrator',
+    name: 'Orchestrator',
+    active: true,
+    icon: ICONS.orchestrator ?? '',
+    role: 'Central DAG Planner & Dispatcher',
+    task: 'Coordinating multi-agent execution pipeline',
+    logs: ['Routing intent graph to active specialists', 'Monitoring token budget and latency'],
+  },
+  {
+    id: 'mentor',
+    name: 'Mentor',
+    active: true,
+    icon: ICONS.advisor ?? '',
+    role: 'Educational Guide & Prompt Engineer',
+    task: 'Teaching Arabic prompting and guiding through specs',
+    logs: ['Ready for @Mentor dispatches', 'Can explain concepts in Arabic'],
+  },
+  {
+    id: 'coder',
+    name: 'Coder',
+    active: true,
+    icon: ICONS.coder ?? '',
+    role: 'TypeScript / Electron Engineer',
+    task: 'Active — ready for code generation requests',
+    logs: ['Standby for @Coder dispatch', 'Ready to generate TypeScript modules'],
+  },
+  {
+    id: 'designer',
+    active: true,
+    icon: ICONS.designer ?? '',
+    role: 'Tactical UI & Visual Architect',
+    task: 'Rendering 60fps topographic HUD shaders',
+    logs: ['Verified contrast ratios & SVG alignments', 'Optimizing canvas DPI scaling'],
+  },
+  {
+    id: 'advisor',
+    active: true,
+    icon: ICONS.advisor ?? '',
+    role: 'Security & Strategy Auditor',
+    task: 'Enforcing Human-in-the-Loop guardrails',
+    logs: ['All shell commands require approval', 'Zero unauthorized network calls detected'],
+  },
+  {
+    id: 'browser',
+    active: true,
+    icon: ICONS.browser ?? '',
+    role: 'Playwright Automation Agent',
+    task: 'Headless session pooled and ready',
+    logs: ['Playwright MCP server ready', 'No active viewport session'],
+  },
+  {
+    id: 'commander',
+    active: true,
+    icon: ICONS.commander ?? '',
+    role: 'Local System & IPC Executor',
+    task: 'Bridging Electron IPC & local tools',
+    logs: ['Desktop Commander heartbeat OK', 'System permissions verified'],
+  },
+];
+
+/** Right wing — six resource and memory nodes. */
+export const RESOURCES: ResourceNode[] = [
+  { id: 'sqlite', name: 'SQLite Memory', pct: 58, icon: ICONS.sqlite ?? '', type: 'memory', desc: 'Local persistent vector & episodic SQLite store' },
+  { id: 'context', name: 'Context Window', pct: 100, icon: ICONS.context ?? '', type: 'context', desc: 'Active working context window (128k / 128k cached)' },
+  { id: 'mcp', name: 'MCP Servers', pct: 15, icon: ICONS.mcp ?? '', type: 'mcp', desc: 'Model Context Protocol tool server load' },
+  { id: 'filesystem', name: 'File System', pct: 36, icon: ICONS.filesystem ?? '', type: 'fs', desc: 'Indexed workspace files in the project root' },
+  { id: 'voice', name: 'Voice Engine', pct: 8, icon: ICONS.voice ?? '', type: 'voice', desc: 'Groq Whisper v3 Turbo dictation pipeline' },
+  { id: 'telemetry', name: 'System Telemetry', pct: 55, icon: ICONS.telemetry ?? '', type: 'telemetry', desc: 'Real-time CPU / GPU / RAM utilization' },
+];
+
+export const MCP_SERVERS: McpServer[] = [
+  { id: 'playwright', name: 'Playwright Browser MCP', enabled: true, latency: '18ms' },
+  { id: 'desktop', name: 'Desktop Commander MCP', enabled: true, latency: '9ms' },
+  { id: 'sqlite', name: 'SQLite Vector Memory', enabled: true, latency: '4ms' },
+  { id: 'filesystem', name: 'Local File System MCP', enabled: true, latency: '6ms' },
+];
+
+export const MEMORY_ENTRIES: MemoryEntry[] = [
+  { key: 'project.root', value: 'AI Command Center (v4.1)', score: '0.98' },
+  { key: 'voice.engine', value: 'Groq whisper-large-v3-turbo [Ctrl+Space]', score: '0.95' },
+  { key: 'safety.policy', value: 'Human-in-the-Loop active for OS ops', score: '0.92' },
+  { key: 'ui.theme', value: 'Tactical Dark / Cyan-Amber Constellation', score: '0.89' },
+];
+
+export const SYSTEM_LOGS: SystemLog[] = [
+  { time: '00:08:49', source: 'Orchestrator', msg: 'Initialized Sentient Core neural mesh.' },
+  { time: '00:08:51', source: 'SQLite Memory', msg: 'Loaded 1,428 vector embeddings (58% pool).' },
+  { time: '00:08:53', source: 'Designer', msg: 'Synced 16:9 widescreen tactical HUD layout.' },
+  { time: '00:08:54', source: 'Advisor', msg: 'Verified Human-in-the-Loop safety boundaries.' },
+  { time: '00:08:55', source: 'OS Commander', msg: 'Listening on Electron IPC bridge [READY].' },
+];

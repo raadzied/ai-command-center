@@ -10,6 +10,7 @@ import { evaluateQuality, MAX_RETRIES } from './quality-gate.js';
 import { processMarkers } from '../tools/markers.js';
 import { validateTscFiles } from '../tools/tsc-validate.js';
 import { enqueueSpeech } from '../voice/state.js';
+import { getAssistantMode } from '../security/settings.js';
 import type {
   AgentName,
   Context,
@@ -78,6 +79,21 @@ const defaultDeps: LoopDeps = {
   onTaskStart: () => {},
 };
 
+function formatPlanOnly(plan: Plan): string {
+  if (plan.tasks.length === 0) {
+    return 'وضع التخطيط: لم أتمكن من استخراج خطوات قابلة للتنفيذ. لم يتم تنفيذ أي إجراء.';
+  }
+
+  const steps = plan.tasks.map(
+    (task, index) => `${index + 1}. [${task.agentName}] ${task.description}`,
+  );
+  return [
+    'وضع التخطيط — هذه خطة فقط، ولم يتم تشغيل الوكلاء أو تعديل أي ملف.',
+    ...steps,
+    'انتقل إلى وضع البناء إذا أردت تنفيذ هذه الخطوات.',
+  ].join('\n');
+}
+
 // يعالج مدخل المستخدم كاملاً (ينفّذ مخطط مهام متعددًا)
 export async function processInput(
   input: string,
@@ -93,6 +109,19 @@ export async function processInput(
 
   const context = await deps.buildMemoryContext(trimmed);
   const plan = await deps.createPlan(trimmed, context);
+  const mode = getAssistantMode();
+
+  if (mode === 'planning' && !plan.isChat) {
+    const content = formatPlanOnly(plan);
+    const result: LoopResult = {
+      intent: plan.intent,
+      agentUsed: null,
+      content,
+      elapsedMs: Date.now() - start,
+    };
+    deps.enqueueSpeech(content, null);
+    return result;
+  }
 
   // دردشة عادية
   if (plan.isChat) {
@@ -101,7 +130,9 @@ export async function processInput(
       temperature: 0.6,
       maxTokens: 800,
     });
-    await deps.saveToMemory(trimmed, reply.trim(), null);
+    if (mode === 'build') {
+      await deps.saveToMemory(trimmed, reply.trim(), null);
+    }
     const result: LoopResult = {
       intent: 'chat',
       agentUsed: null,

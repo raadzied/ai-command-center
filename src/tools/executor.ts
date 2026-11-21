@@ -4,6 +4,7 @@ import { classifyAction } from '../security/risk-engine.js';
 import { requestApproval } from '../security/approval.js';
 import { writeAudit } from '../security/audit.js';
 import { logger as log } from '../llm/logger.js';
+import { isActionAllowed } from '../security/settings.js';
 
 // نتيجة تنفيذ عملية مع موافقة
 export interface ExecutionResult<T = unknown> {
@@ -27,6 +28,27 @@ export async function executeWithApproval<T>(
   });
 
   const approval = await requestApproval(classified);
+  if (
+    (approval.decision === 'user_approved' ||
+      approval.decision === 'auto_approved') &&
+    !isActionAllowed(action.type)
+  ) {
+    const revokedApproval: ApprovalResult = {
+      auditId: approval.auditId,
+      decision: 'blocked',
+    };
+    writeAudit(classified, revokedApproval);
+    log.warn('Action permission revoked before execution', {
+      type: classified.type,
+      target: classified.target,
+      auditId: approval.auditId,
+    });
+    return {
+      approval: revokedApproval,
+      executed: false,
+      error: 'Action permission was disabled before execution',
+    };
+  }
   writeAudit(classified, approval);
 
   // لم يُوافق

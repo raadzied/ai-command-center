@@ -2,13 +2,29 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AgentMap } from './AgentMap';
 import { Chat } from './Chat';
 import { ApprovalModal } from './ApprovalModal';
-import type { ApprovalRequestData } from './window';
+import { PermissionPanel } from './PermissionPanel';
+import { AssistantControls } from './AssistantControls';
+import type {
+  ApprovalRequestData,
+  AssistantMode,
+  AssistantPermission,
+  AssistantSettings,
+} from './window';
+import { useApexTelemetry } from './components/apex-hud/useApexTelemetry';
+import { ApexHudContainer } from './components/apex-hud/ApexHudContainer';
 
 export function App(): React.JSX.Element {
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [taskInfo, setTaskInfo] = useState<{ index: number; total: number } | null>(null);
   const [approvalRequest, setApprovalRequest] = useState<ApprovalRequestData | null>(null);
   const [voiceOn, setVoiceOn] = useState<boolean>(true);
+  const [assistantSettings, setAssistantSettings] = useState<AssistantSettings | null>(null);
+  const [permissionsOpen, setPermissionsOpen] = useState<boolean>(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [view, setView] = useState<'apex' | 'dag'>('apex');
+
+  // Initialize APEX telemetry hook — subscribes to IPC events with graceful fallbacks
+  const apexTelemetry = useApexTelemetry();
 
   // الطابور ومشغل الصوت
   const audioQueueRef = useRef<Array<{ base64Mp3: string; agentName: string | null }>>([]);
@@ -39,11 +55,51 @@ export function App(): React.JSX.Element {
     await window.api.stopVoice();
   };
 
+  const handleModeChange = async (mode: AssistantMode): Promise<void> => {
+    try {
+      setAssistantSettings(await window.api.setAssistantMode(mode));
+      setSettingsError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setSettingsError(`تعذر تغيير الوضع: ${message}`);
+    }
+  };
+
+  const handlePermissionChange = async (
+    permission: AssistantPermission,
+    enabled: boolean,
+  ): Promise<void> => {
+    try {
+      setAssistantSettings(await window.api.setPermission(permission, enabled));
+      setSettingsError(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setSettingsError(`تعذر حفظ الصلاحية: ${message}`);
+    }
+  };
+
   // جلب حالة الصوت عند التحميل
   useEffect(() => {
     if (window.api?.getVoiceStatus) {
-      void window.api.getVoiceStatus().then((status: boolean) => setVoiceOn(status));
+      void window.api.getVoiceStatus()
+        .then((status: boolean) => setVoiceOn(status))
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          setSettingsError(`تعذر تحميل حالة الصوت: ${message}`);
+        });
     }
+    let active = true;
+    void window.api.getAssistantSettings()
+      .then((settings: AssistantSettings) => {
+        if (active) setAssistantSettings(settings);
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        if (active) setSettingsError(`تعذر تحميل الإعدادات: ${message}`);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const playNextInQueue = useCallback((): void => {
@@ -78,7 +134,7 @@ export function App(): React.JSX.Element {
       audioQueueRef.current.push(payload);
       playNextInQueue();
     };
-    window.api?.onVoiceAudio?.(audioCb);
+    const unsubscribeAudio = window.api.onVoiceAudio(audioCb);
 
     const stopCb = () => {
       audioQueueRef.current = [];
@@ -88,9 +144,11 @@ export function App(): React.JSX.Element {
       }
       isPlayingRef.current = false;
     };
-    window.api?.onVoiceStop?.(stopCb);
+    const unsubscribeStop = window.api.onVoiceStop(stopCb);
 
     return () => {
+      unsubscribeAudio();
+      unsubscribeStop();
       audioQueueRef.current = [];
       if (currentAudioRef.current) {
         currentAudioRef.current.pause();
@@ -102,73 +160,78 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="hud-brand">
-          <span style={{ color: '#00E5FF', animation: 'pulse-brand 2s infinite' }}>●</span>
-          <span>مركز القيادة الذكي · AI Command Center</span>
-          <span style={{ fontSize: '10px', background: 'rgba(0, 229, 255, 0.15)', color: '#00E5FF', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(0, 229, 255, 0.3)' }}>V4.2 PRO</span>
-        </div>
-        <div className="hud-items">
-          <div className="hud-item">
-            <span>⚡ Gemini 2.5 + Groq Whisper</span>
+      {view === 'apex' ? (
+        <ApexHudContainer
+          commandDock={
+            <Chat
+              onActiveAgent={onAgentChange}
+              onTaskInfo={onTaskChange}
+              onApprovalRequest={setApprovalRequest}
+            />
+          }
+          mode={assistantSettings?.mode ?? null}
+          onKillAll={() => {
+            void handleStopVoice();
+          }}
+          onOpenPermissions={() => setPermissionsOpen(true)}
+          onViewChange={(v) => setView(v)}
+          onVoiceToggle={() => void handleToggleVoice()}
+          telemetry={apexTelemetry}
+          view={view}
+          voiceOn={voiceOn}
+        />
+      ) : (
+        <>
+          <header className="app-header">
+            <div className="hud-brand">
+              <span style={{ color: '#00E5FF', animation: 'pulse-brand 2s infinite' }}>●</span>
+              <span>مركز القيادة الذكي · AI Command Center</span>
+              <span style={{ fontSize: '10px', background: 'rgba(0, 229, 255, 0.15)', color: '#00E5FF', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(0, 229, 255, 0.3)' }}>V4.2 PRO</span>
+            </div>
+            <div className="hud-items">
+              <div className="hud-item">
+                <span>⚡ Gemini 2.5 + Groq Whisper</span>
+              </div>
+              <div className="hud-item">
+                <span>🧠 SQLite-Vec RAG</span>
+              </div>
+              <div className="hud-item">
+                <span className={`hud-dot ${activeAgent ? 'busy' : 'idle'}`} />
+                <span>{activeAgent ? `الوكيل: ${activeAgent.toUpperCase()}` : 'في وضع الاستعداد'}</span>
+              </div>
+            </div>
+            <AssistantControls
+              mode={assistantSettings?.mode ?? null}
+              voiceOn={voiceOn}
+              permissionsOpen={permissionsOpen}
+              onModeChange={(mode) => void handleModeChange(mode)}
+              onTogglePermissions={() => setPermissionsOpen((open) => !open)}
+              onToggleVoice={() => void handleToggleVoice()}
+              onStopVoice={() => void handleStopVoice()}
+            />
+          </header>
+          <div className="app-body">
+            <div className="map-panel">
+              <AgentMap activeAgent={activeAgent} taskInfo={taskInfo} />
+            </div>
+            <div className="chat-panel">
+              <Chat
+                onActiveAgent={onAgentChange}
+                onTaskInfo={onTaskChange}
+                onApprovalRequest={setApprovalRequest}
+              />
+            </div>
           </div>
-          <div className="hud-item">
-            <span>🧠 SQLite-Vec RAG</span>
-          </div>
-          <div className="hud-item">
-            <span className={`hud-dot ${activeAgent ? 'busy' : 'idle'}`} />
-            <span>{activeAgent ? `الوكيل: ${activeAgent.toUpperCase()}` : 'في وضع الاستعداد'}</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <button
-            type="button"
-            onClick={() => void handleToggleVoice()}
-            style={{
-              background: voiceOn ? 'rgba(0, 229, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
-              color: voiceOn ? '#00E5FF' : '#8A99AD',
-              border: `1px solid ${voiceOn ? 'rgba(0, 229, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
-              borderRadius: '6px',
-              padding: '5px 10px',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontFamily: "'Consolas', monospace",
-              fontWeight: 700,
-            }}
-          >
-            {voiceOn ? '🔊 الصوت: مفعل' : '🔇 الصوت: مكتوم'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleStopVoice()}
-            style={{
-              background: 'rgba(255, 255, 255, 0.05)',
-              color: '#E0E6ED',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: '6px',
-              padding: '5px 8px',
-              cursor: 'pointer',
-              fontSize: '11px',
-              fontFamily: "'Consolas', monospace",
-              fontWeight: 700,
-            }}
-          >
-            ⏹️ إيقاف النطق
-          </button>
-        </div>
-      </header>
-      <div className="app-body">
-        <div className="map-panel">
-          <AgentMap activeAgent={activeAgent} taskInfo={taskInfo} />
-        </div>
-        <div className="chat-panel">
-          <Chat
-            onActiveAgent={onAgentChange}
-            onTaskInfo={onTaskChange}
-            onApprovalRequest={setApprovalRequest}
-          />
-        </div>
-      </div>
+        </>
+      )}
+      <PermissionPanel
+        open={permissionsOpen}
+        settings={assistantSettings}
+        error={settingsError}
+        onPermissionChange={(permission, enabled) => {
+          void handlePermissionChange(permission, enabled);
+        }}
+      />
       <ApprovalModal request={approvalRequest} onRespond={handleApprovalRespond} />
     </div>
   );

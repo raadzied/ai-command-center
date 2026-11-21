@@ -20,7 +20,11 @@ if (run('tsc', ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.electron.json
 if (run('vite build', ['node_modules/vite/bin/vite.js', 'build', '--config', 'src/electron/renderer/vite.config.ts']) !== 0) process.exit(1);
 
 const assets = [{ from: 'src/memory/schema.sql', to: 'dist-electron/memory/schema.sql' }];
-for (const { from, to } of assets) {
+const outputs = [
+  ...assets,
+  { from: 'src/electron/preload.cjs', to: 'dist-electron/electron/preload.cjs' },
+];
+for (const { from, to } of outputs) {
   const src = resolve(ROOT, from);
   const dst = resolve(ROOT, to);
   if (!existsSync(src)) { console.error(`❌ MISSING: ${src}`); process.exit(1); }

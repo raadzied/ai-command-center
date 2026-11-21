@@ -4,6 +4,7 @@ import type {
   ApprovalDecision,
 } from '../types.js';
 import { logger as log } from '../llm/logger.js';
+import { isActionAllowed, requiresConfirmation } from './settings.js';
 
 // معرّف مراجعة فريد
 function generateAuditId(): string {
@@ -36,17 +37,15 @@ export async function requestApproval(
 ): Promise<ApprovalResult> {
   const auditId = generateAuditId();
 
-  // SAFE — موافقة تلقائية
-  if (action.risk === 'safe') {
-    log.info('Action auto-approved', {
+  if (!isActionAllowed(action.type)) {
+    log.warn('Action blocked by assistant mode or permission', {
       auditId,
       type: action.type,
       target: action.target,
     });
-    return { decision: 'auto_approved', auditId };
+    return { decision: 'blocked', auditId };
   }
 
-  // DANGEROUS — حجب فوري
   if (action.risk === 'dangerous') {
     log.warn('Action blocked', {
       auditId,
@@ -61,6 +60,16 @@ export async function requestApproval(
     console.log(`   السبب: ${action.explanation}`);
     console.log('');
     return { decision: 'blocked', auditId };
+  }
+
+  // SAFE — موافقة تلقائية
+  if (action.risk === 'safe' && !requiresConfirmation(action.type)) {
+    log.info('Action auto-approved', {
+      auditId,
+      type: action.type,
+      target: action.target,
+    });
+    return { decision: 'auto_approved', auditId };
   }
 
   // REVIEW — نسأل المستخدم عبر الاستراتيجية المحقونة

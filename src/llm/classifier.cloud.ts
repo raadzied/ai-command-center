@@ -142,7 +142,7 @@ export async function classify(input: string): Promise<ClassificationResult> {
   try {
     const first = await requestClassification(apiKey, input, false);
     if (first) return first;
-    logger.warn('Retrying classification once');
+    log.warn('Retrying classification once');
     const second = await requestClassification(apiKey, input, true);
     return second ?? fallbackResult('classification failed after retry');
   } catch (err) {

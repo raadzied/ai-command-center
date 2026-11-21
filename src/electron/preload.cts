@@ -11,6 +11,13 @@ interface ApprovalPayload {
   };
 }
 
+interface MemoryStatsPayload {
+  conversations: number;
+  decisions: number;
+  projects: number;
+  skills: number;
+}
+
 contextBridge.exposeInMainWorld('api', {
   sendInput: (text: string): Promise<unknown> =>
     ipcRenderer.invoke('process:input', text),
@@ -44,9 +51,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('voice:stop-audio');
     ipcRenderer.on('voice:stop-audio', () => cb());
   },
+  getMemoryStats: (): Promise<MemoryStatsPayload> => ipcRenderer.invoke('memory:stats'),
   // دوال Whisper Flow الجديد
   transcribeAudio: (
     base64Audio: string,
   ): Promise<{ ok: boolean; text?: string; error?: string }> =>
     ipcRenderer.invoke('voice:transcribe', base64Audio),
+  getAssistantSettings: (): Promise<unknown> => ipcRenderer.invoke('assistant:settings:get'),
+  setAssistantMode: (mode: string): Promise<unknown> =>
+    ipcRenderer.invoke('assistant:settings:mode', mode),
+  setPermission: (permission: string, enabled: boolean): Promise<unknown> =>
+    ipcRenderer.invoke('assistant:settings:permission', { permission, enabled }),
 });

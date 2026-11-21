@@ -2,13 +2,14 @@ import 'dotenv/config';
 import { app, BrowserWindow, ipcMain, session } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { initDb, closeDb } from '../memory/db.js';
+import { initDb, closeDb, getDb } from '../memory/db.js';
 import { processInput } from '../core/loop.js';
 import { setApprovalStrategy } from '../security/approval.js';
 import { logger as log } from '../llm/logger.js';
-import { isVoiceEnabled, setVoiceEnabled, cancelSpeech } from '../voice/state.js';
 import type { ApprovalDecision, ClassifiedAction } from '../types.js';
-import { transcribeWithWhisperFlow } from '../voice/whisper.js';
+import { initializeAssistantSettings } from '../security/settings.js';
+import { registerAssistantSettingsHandlers } from './settings-ipc.js';
+import { registerVoiceHandlers } from './voice-ipc.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,6 +39,13 @@ interface ProcessInputResult {
   content?: string;
   elapsedMs?: number;
   error?: string;
+}
+
+interface MemoryStatsResponse {
+  conversations: number;
+  decisions: number;
+  projects: number;
+  skills: number;
 }
 
 let approvalResolver: ((decision: ApprovalDecision) => void) | null = null;
@@ -99,6 +107,18 @@ ipcMain.on('approval:response', (_event, data: ApprovalResponse): void => {
   settleApproval(data.approved ? 'user_approved' : 'user_denied');
 });
 
+ipcMain.handle('memory:stats', (): MemoryStatsResponse => {
+  return getDb()
+    .prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM conversations) AS conversations,
+        (SELECT COUNT(*) FROM skills) AS skills,
+        (SELECT COUNT(*) FROM projects) AS projects,
+        (SELECT COUNT(*) FROM decisions) AS decisions`,
+    )
+    .get() as MemoryStatsResponse;
+});
+
 ipcMain.handle(
   'process:input',
   async (_event, text: unknown): Promise<ProcessInputResult> => {
@@ -131,58 +151,9 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('voice:status', (): boolean => {
-  return isVoiceEnabled();
-});
-
-ipcMain.handle('voice:toggle', (_event, enabled: unknown): boolean => {
-  const next = typeof enabled === 'boolean' ? enabled : !isVoiceEnabled();
-  setVoiceEnabled(next);
-  if (!next) cancelSpeech();
-  return isVoiceEnabled();
-});
-
-ipcMain.handle('voice:stop', (): void => {
-  cancelSpeech();
-  const wins = BrowserWindow.getAllWindows();
-  if (wins[0] && !wins[0].isDestroyed()) {
-    wins[0].webContents.send('voice:stop-audio');
-  }
-});
-
-ipcMain.handle('voice:transcribe', async (_event, base64Audio: unknown): Promise<{ ok: boolean; text?: string; error?: string }> => {
-  if (typeof base64Audio !== 'string' || !base64Audio.trim()) {
-    return { ok: false, error: 'بيانات الصوت غير صالحة' };
-  }
-  try {
-    const text = await transcribeWithWhisperFlow(base64Audio);
-    return { ok: true, text };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: message };
-  }
-});
-
 // تصدير بث الصوت من voice/tts.ts إلى Electron
-import { setElectronAudioEmitter } from '../voice/tts.js';
-
-setVoiceEnabled(true);
-setElectronAudioEmitter((payload) => {
-  const wins = BrowserWindow.getAllWindows();
-  if (wins[0] && !wins[0].isDestroyed()) {
-    wins[0].webContents.send('voice:audio', payload);
-  }
-});
-
-// طلب صلاحية الميكروفون لحاليًا
-void app.whenReady().then((): void => {
-  const wins = BrowserWindow.getAllWindows();
-  if (wins[0]) {
-    wins[0].webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => {
-      callback(permission === 'media');
-    });
-  }
-});
+registerAssistantSettingsHandlers();
+registerVoiceHandlers();
 
 async function createWindow(): Promise<void> {
   const win = new BrowserWindow({
@@ -206,7 +177,11 @@ async function createWindow(): Promise<void> {
 }
 
 void app.whenReady().then(async (): Promise<void> => {
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    callback(permission === 'media' && webContents.getURL().startsWith('file://'));
+  });
   initDb();
+  initializeAssistantSettings();
   electronStrategy();
   log.info('Electron app ready');
   await createWindow();

@@ -64,5 +64,3 @@ test-build-start.mjs (Build→Start)، run-all-tests.mjs (الكل).
 
 ## محظورات مطلقة
 
-لا تلمس .git/ يدويًا. لا git push --force. لا تحذف node_modules/ بلا أمر.
-لا تحذف .env أو data/memory.db. لا npm test كاملًا وقت ضغط API مرتفع.

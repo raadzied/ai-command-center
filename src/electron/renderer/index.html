@@ -1,20 +1,177 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' file: data:; img-src 'self' data:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';">
-  <title>AI Command Center</title>
-  <style>
-    @font-face {
-      font-family: 'Consolas';
-      src: local('Consolas'), local('Courier New');
-      font-display: swap;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'self' 'unsafe-inline' 'unsafe-eval' file: data:; img-src 'self' data:; media-src 'self' data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+  />
+  <title>AI Command Center — APEX HUD</title>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="module" src="./src/main.tsx"></script>
+  <!-- 1. HIGH-DPI 60FPS PARTICLE TERRAIN & SENTIENT CORE CANVAS -->
+  <canvas id="core-canvas"></canvas>
+
+  <!-- 2. RADIAL SVG CONSTELLATION NETWORK LAYER -->
+  <svg id="constellation-svg" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="glow-amber" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="2.8" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+      <filter id="glow-cyan" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur stdDeviation="2.2" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </defs>
+    <g id="constellation-paths"></g>
+    <g id="constellation-pulses"></g>
+  </svg>
+
+  <!-- 3. MAIN HUD INTERFACE LAYER -->
+  <div id="hud-root" class="hud">
+    <header class="hud-top">
+      <div class="brand-block">
+        <div id="hud-clock" class="hud-clock">00:09:43</div>
+        <button
+          id="status-toggle"
+          class="status-toggle"
+          type="button"
+          title="Cycle core state (THINKING / LISTENING / IDLE)"
+        >
+          <span id="status-dot" class="status-dot" data-status="THINKING"></span>
+          <span id="status-label">STATUS: THINKING</span>
+        </button>
+      </div>
+
+      <h1 id="hud-title" class="hud-title">Orchestrator / Sentient Core</h1>
+
+      <div class="top-actions">
+        <button id="btn-audio-toggle" class="chip" type="button" title="Toggle tactical sound effects">
+          <span id="audio-dot" class="chip-dot"></span>
+          <span id="audio-label">SFX: ON</span>
+        </button>
+        <button id="btn-boot-sound" class="chip chip-boot" type="button" title="Play core power-up sequence">
+          BOOT
+        </button>
+        <span id="active-agents-count" class="chip chip-agents">AGENTS: 4/6 ACTIVE</span>
+      </div>
+    </header>
+
+    <main class="hud-main">
+      <section id="left-wing" class="wing wing-left" aria-label="Agent nodes"></section>
+
+      <div
+        id="core-hitbox"
+        class="core-hitbox"
+        role="button"
+        tabindex="0"
+        title="Click the Sentient Core to trigger a neural pulse"
+      ></div>
+
+      <section id="right-wing" class="wing wing-right" aria-label="Resource nodes"></section>
+    </main>
+
+    <footer class="hud-dock">
+      <div class="command-dock">
+        <button id="btn-terminal" class="dock-btn" type="button" title="Open live execution log">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+        </button>
+
+        <button id="btn-alerts" class="dock-btn" type="button" title="System status and diagnostics">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </button>
+
+        <button id="btn-voice" class="dock-btn" type="button" title="Toggle voice listening mode (Ctrl+Space)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="10" x2="4" y2="14"></line>
+            <line x1="8" y1="6" x2="8" y2="18"></line>
+            <line x1="12" y1="3" x2="12" y2="21"></line>
+            <line x1="16" y1="7" x2="16" y2="17"></line>
+            <line x1="20" y1="10" x2="20" y2="14"></line>
+          </svg>
+        </button>
+
+        <form id="command-form" class="command-form">
+          <input
+            id="command-input"
+            class="command-input"
+            type="text"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Dispatch command... e.g. @Coder build module or /memory flush"
+          />
+        </form>
+
+        <button id="btn-focus" class="dock-btn" type="button" title="Toggle sentient core focus mode">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 22 12 12 22 2 12 12 2"></polygon>
+            <circle cx="12" cy="12" r="2.5"></circle>
+          </svg>
+        </button>
+
+        <button id="btn-settings" class="dock-btn" type="button" title="Core and MCP settings">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+
+        <button id="btn-inspector" class="dock-btn" type="button" title="Toggle inspector drawer">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="15" y1="3" x2="15" y2="21"></line>
+          </svg>
+        </button>
+
+        <button id="btn-kill" class="btn-kill" type="button">KILL ALL</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- 4. GLASSMORPHIC SLIDE-OVER INSPECTOR DRAWER -->
+  <aside id="inspector-drawer" class="inspector" aria-hidden="true">
+    <div class="inspector-head">
+      <div class="inspector-head-main">
+        <span id="inspector-badge" class="inspector-badge"></span>
+        <div>
+          <h2 id="inspector-title" class="inspector-title">Orchestrator</h2>
+          <p id="inspector-subtitle" class="inspector-subtitle">AGENT TELEMETRY</p>
+        </div>
+      </div>
+      <button id="btn-close-inspector" class="dock-btn" type="button" title="Close inspector">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+
+    <div id="inspector-body" class="inspector-body"></div>
+
+    <div class="inspector-foot">
+      <span>APEX CORE v4.1</span>
+      <span id="inspector-footer-status">LINK: NOMINAL</span>
+    </div>
+  </aside>
+
+  <!-- 5. SUBTLE HUD TOAST NOTIFICATION -->
+  <div id="hud-toast" class="hud-toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./src/hud/main.ts"></script>
 </body>
 </html>
