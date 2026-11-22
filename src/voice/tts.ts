@@ -32,7 +32,10 @@ async function fetchFreeArabicMp3(text: string, signal: AbortSignal): Promise<Bu
     signal,
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    log.warn('Google TTS failed', { status: res.status });
+    return null;
+  }
   return Buffer.from(await res.arrayBuffer());
 }
 
@@ -111,39 +114,46 @@ export async function speak(
     if (apiKey) {
       // --- Hakim AI ---
       const voice = getVoiceForAgent(agentName ?? null);
-      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const tmpPath = join(tmpdir(), `ai-cc-${stamp}.mp3`);
       const abort = new AbortController();
 
       currentAbort = abort;
-      const res = await fetch(HAKIM_URL, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'hakim-fast-v1',
-          voice,
-          input: text,
-          response_format: 'mp3',
-        }),
-        signal: abort.signal,
-      });
+      try {
+        const res = await fetch(HAKIM_URL, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'hakim-fast-v1',
+            voice,
+            input: text,
+            response_format: 'mp3',
+          }),
+          signal: abort.signal,
+        });
 
-      if (!res.ok) {
-        const errText = await res.text();
-        log.warn('Hakim TTS error — using local fallback', { status: res.status, err: errText.slice(0, 200) });
-        throw new Error('HAKIM_FAILED');
+        if (!res.ok) {
+          const errText = await res.text();
+          log.warn('Hakim TTS error — trying Google TTS', { status: res.status, err: errText.slice(0, 200) });
+        } else {
+          const buffer = Buffer.from(await res.arrayBuffer());
+          if (buffer.length < 1000) {
+            log.warn('Small audio buffer — trying Google TTS', { bytes: buffer.length });
+          } else {
+            mp3Buffer = buffer;
+          }
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        const msg = err instanceof Error ? err.message : String(err);
+        log.warn('Hakim TTS request failed — trying Google TTS', { message: msg });
       }
 
-      const buffer = Buffer.from(await res.arrayBuffer());
-      if (buffer.length < 1000) {
-        log.warn('Small audio buffer — using local fallback', { bytes: buffer.length });
-        throw new Error('BUFFER_TOO_SMALL');
+      // خطة بديلة أولى: Google TTS المجاني
+      if (!mp3Buffer) {
+        mp3Buffer = await fetchFreeArabicMp3(text, AbortSignal.timeout(8000));
       }
-
-      mp3Buffer = buffer;
     } else {
       // --- بدون مفتاح API → Google TTS المجاني ---
       mp3Buffer = await fetchFreeArabicMp3(text, AbortSignal.timeout(8000));
@@ -151,6 +161,7 @@ export async function speak(
 
     // ---- مسار الصوت إلى Electron ----
     if (mp3Buffer && electronAudioEmitter) {
+      log.info('Emitting voice audio to Electron', { bytes: mp3Buffer.length, agent: agentName ?? 'core' });
       // إرسال payload عبر IPC إلى renderer
       electronAudioEmitter({ base64Mp3: mp3Buffer.toString('base64'), agentName: agentName ?? null });
       // تقريبية للنطق
@@ -169,13 +180,13 @@ export async function speak(
         return;
       }
       await playMp3File(tmpPath);
-    }
-  } catch (err) {
-    if (err instanceof Error && (err.message === 'HAKIM_FAILED' || err.message === 'BUFFER_TOO_SMALL')) {
-      log.info('Fallback to local TTS due to Hakim issue');
-      await speakLocalFallback(text);
       return;
     }
+
+    // ---- لا يوجد أي مخزن صوتي بعد المحاولتين ----
+    log.warn('No MP3 buffer — falling back to Windows SAPI');
+    await speakLocalFallback(text);
+  } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       log.info('TTS aborted by user');
       return;

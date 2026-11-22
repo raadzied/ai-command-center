@@ -3,7 +3,7 @@ import { speak, killCurrentPlayback } from './tts.js';
 import { extractEssence } from './essence.js';
 
 let voiceEnabled = true;
-let cancelled = false;
+let speechGen = 0;
 let speechChain: Promise<void> = Promise.resolve();
 
 export function isVoiceEnabled(): boolean {
@@ -20,15 +20,14 @@ export function toggleVoice(): boolean {
 }
 
 export function cancelSpeech(): void {
-  cancelled = true;
+  speechGen++;
   killCurrentPlayback();
   log.info('Speech cancelled + current playback killed');
 }
 
 // يضع جوهر الرد في طابور النطق — fire-and-forget.
 export function enqueueSpeech(text: string, agentName: string | null): void {
-  if (!voiceEnabled || cancelled) return;
-  if (!text.trim()) return;
+  if (!voiceEnabled || !text.trim()) return;
 
   const essence = extractEssence(text);
 
@@ -37,9 +36,11 @@ export function enqueueSpeech(text: string, agentName: string | null): void {
     return;
   }
 
+  const myGen = speechGen;
+
   speechChain = speechChain
     .then(() => {
-      if (cancelled) return;
+      if (myGen !== speechGen) return;
       return speak(essence, { agentName });
     })
     .catch((err: unknown) => {
