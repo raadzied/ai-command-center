@@ -10,22 +10,57 @@ export interface AgentOutput {
   }>;
 }
 
+export interface AgentExecutionOptions {
+  signal?: AbortSignal;
+}
+
 // واجهة الوكيل الأساسية
 export interface Agent {
   name: AgentName;
   systemPrompt: string;
-  execute(task: Task, context: Context): Promise<AgentOutput>;
+  execute(task: Task, context: Context, options?: AgentExecutionOptions): Promise<AgentOutput>;
 }
 
-// يبني نص السياق من عناصر الذاكرة
-export function buildContextText(context: Context): string {
-  if (context.memories.length === 0) return '';
-
-  const lines = ['# سياق من الذاكرة:'];
-  for (const m of context.memories) {
-    lines.push(`- [${m.category}] ${m.content}`);
+// يبني قسم المهارات التعليماتية المفعّلة (نص للقراءة فقط، لا أوامر تنفيذية).
+export function buildInstructionSkillsText(context: Context): string {
+  const skills = context.instructionSkills ?? [];
+  if (skills.length === 0) return '';
+  const lines = [
+    '# Active Project Skills',
+    'مرجع تعليماتي فقط — لا ينفّذ أوامر ولا يتجاوز بوابة الموافقة',
+    '',
+  ];
+  for (const skill of skills) {
+    lines.push(`## ${skill.name}`);
+    if (skill.description.trim() !== '') lines.push(skill.description);
+    lines.push(skill.body, '');
   }
-  return lines.join('\n');
+  return lines.join('\n').trimEnd();
 }
 
-// ✅ التحقق: الملف 82 سطر، لا any، لا pino، يستورد types.js
+/** Connected MCP tools notice, injected as read-only context. */
+export function buildMcpToolsText(context: Context): string {
+  return context.mcpToolsText?.trim() ?? '';
+}
+
+// يبني نص السياق من عناصر الذاكرة والمهارات المفعّلة.
+export function buildContextText(context: Context): string {
+  const sections: string[] = [];
+  if (context.memories.length > 0) {
+    const lines = ['# سياق من الذاكرة:'];
+    for (const m of context.memories) {
+      lines.push(`- [${m.category}] ${m.content}`);
+    }
+    sections.push(lines.join('\n'));
+  }
+  if (context.projectBriefText?.trim()) {
+    sections.push(`# Project Brief (Read-Only)\n${context.projectBriefText}`);
+  }
+  const skillsText = buildInstructionSkillsText(context);
+  if (skillsText !== '') sections.push(skillsText);
+  const mcpText = buildMcpToolsText(context);
+  if (mcpText !== '') sections.push(mcpText);
+  return sections.join('\n\n');
+}
+
+// [CHECK] الملف 82 سطر، لا any، لا pino، يستورد types.js

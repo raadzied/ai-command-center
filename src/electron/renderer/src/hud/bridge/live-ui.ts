@@ -19,11 +19,12 @@ export interface LiveVoiceUi {
   isOpen(): boolean;
 }
 
-const PHASE_TEXT: Record<Exclude<LivePhase, 'off'>, string> = {
-  listening: '🎙️ أستمع إليك...',
-  transcribing: '✨ يحوّل...',
-  thinking: '🧠 يفكر...',
-  speaking: '🔊 يتحدث...',
+// Static, developer-authored phase strings (no user input) — safe for innerHTML.
+const PHASE_HTML: Record<Exclude<LivePhase, 'off'>, string> = {
+  listening: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><path d="M12 19v3"/></svg> أستمع إليك...`,
+  transcribing: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12h3"/><path d="M7 8v8"/><path d="M11 4v16"/><path d="M15 7v10"/><path d="M19 9v6"/><path d="M22 12h-2"/></svg> يحوّل...`,
+  thinking: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></svg> يفكر...`,
+  speaking: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg> يتحدث...`,
 };
 const IDLE_TEXT = '...';
 
@@ -53,8 +54,8 @@ function buildLiveDom(): LiveNodes {
     `<span class="live-level"><span class="live-level-dot"></span></span>` +
     `<span class="live-status-text"></span>` +
     `<span class="live-bar-actions">` +
-    `<button type="button" class="live-btn live-btn-interrupt">⚡ قاطع</button>` +
-    `<button type="button" class="live-btn live-btn-close">✕ إيقاف المحادثة</button>` +
+    `<button type="button" class="live-btn live-btn-interrupt"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> قاطع</button>` +
+    `<button type="button" class="live-btn live-btn-close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg> إيقاف المحادثة</button>` +
     `</span></div>` +
     `<p class="live-caption" dir="rtl">` +
     `<span class="live-caption-label">المساعد:</span>` +
@@ -76,7 +77,7 @@ export function createLiveVoiceUi(options: LiveVoiceUiOptions): LiveVoiceUi {
   let open = false;
 
   const setPhase = (phase: LivePhase): void => {
-    nodes.root.dataset.phase = phase; if (phase !== 'off') nodes.status.textContent = PHASE_TEXT[phase];
+    nodes.root.dataset.phase = phase; if (phase !== 'off') nodes.status.innerHTML = PHASE_HTML[phase];
   };
 
   const setLevel = (level: number): void => {

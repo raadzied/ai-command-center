@@ -59,38 +59,38 @@ export const AGENTS: AgentNode[] = [
     name: 'Advisor',
     active: true,
     icon: ICONS.advisor ?? '',
-    role: 'Security & Strategy Auditor',
-    task: 'Enforcing Human-in-the-Loop guardrails',
-    logs: ['All shell commands require approval', 'Zero unauthorized network calls detected'],
+    role: 'Safety & Approval Gate',
+    task: 'Guarding every write, tool call and MCP invocation',
+    logs: ['Human-in-the-loop approval required for changes', 'Per-window approval isolation active'],
   },
   {
     id: 'browser',
     name: 'Browser',
     active: true,
     icon: ICONS.browser ?? '',
-    role: 'Playwright Automation Agent',
-    task: 'Headless session pooled and ready',
-    logs: ['Playwright MCP server ready', 'No active viewport session'],
+    role: 'MCP Web & API Anything',
+    task: 'Running connected MCP tools for the active project',
+    logs: ['MCP servers connect only when enabled', 'External calls pass the approval gate'],
   },
   {
     id: 'commander',
     name: 'Commander',
     active: true,
     icon: ICONS.commander ?? '',
-    role: 'Local System & IPC Executor',
-    task: 'Bridging Electron IPC & local tools',
-    logs: ['Desktop Commander heartbeat OK', 'System permissions verified'],
+    role: 'Workspace File Tools & Validation',
+    task: 'Scoped file reads, atomic writes and tsc checks',
+    logs: ['File operations confined to workspace root', 'Writes verified with SHA-256 recheck'],
   },
 ];
 
 /** Right wing — six resource and memory nodes. */
 export const RESOURCES: ResourceNode[] = [
-  { id: 'sqlite', name: 'SQLite Memory', pct: 58, icon: ICONS.sqlite ?? '', type: 'memory', desc: 'Local persistent vector & episodic SQLite store' },
-  { id: 'context', name: 'Context Window', pct: 100, icon: ICONS.context ?? '', type: 'context', desc: 'Active working context window (128k / 128k cached)' },
-  { id: 'mcp', name: 'MCP Servers', pct: 15, icon: ICONS.mcp ?? '', type: 'mcp', desc: 'Model Context Protocol tool server load' },
-  { id: 'filesystem', name: 'File System', pct: 36, icon: ICONS.filesystem ?? '', type: 'fs', desc: 'Indexed workspace files in the project root' },
-  { id: 'voice', name: 'Voice Engine', pct: 8, icon: ICONS.voice ?? '', type: 'voice', desc: 'Groq Whisper v3 Turbo dictation pipeline' },
-  { id: 'telemetry', name: 'System Telemetry', pct: 55, icon: ICONS.telemetry ?? '', type: 'telemetry', desc: 'Real-time CPU / GPU / RAM utilization' },
+  { id: 'sqlite', name: 'SQLite Memory', pct: 0, icon: ICONS.sqlite ?? '', type: 'memory', desc: 'Persistent conversations, skills, decisions and sessions' },
+  { id: 'context', name: 'Context Window', pct: 0, icon: ICONS.context ?? '', type: 'context', desc: 'Live session messages and enabled instruction skills' },
+  { id: 'mcp', name: 'MCP Servers', pct: 0, icon: ICONS.mcp ?? '', type: 'mcp', desc: 'Connected MCP servers and their tool inventory' },
+  { id: 'filesystem', name: 'File System', pct: 0, icon: ICONS.filesystem ?? '', type: 'fs', desc: 'Workspace files indexed from the scoped project root' },
+  { id: 'voice', name: 'Voice Engine', pct: 0, icon: ICONS.voice ?? '', type: 'voice', desc: 'Speech pipeline for the focused HUD window' },
+  { id: 'telemetry', name: 'System Telemetry', pct: 0, icon: ICONS.telemetry ?? '', type: 'telemetry', desc: 'Actual RSS memory, heap usage and process uptime' },
 ];
 
 export const MCP_SERVERS: McpServer[] = [

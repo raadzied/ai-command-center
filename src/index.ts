@@ -224,8 +224,8 @@ async function main(): Promise<void> {
         console.log('─'.repeat(50));
         console.log(result.content);
         console.log('─'.repeat(50));
-        const flag = result.content.startsWith('⚠️ [غير مُتحقق')
-          ? '  ⚠️'
+        const flag = result.content.startsWith('[WARN] [غير مُتحقق')
+          ? '  [WARN]'
           : '';
         console.log(
           `[${result.agentUsed ?? 'chat'}] ${result.elapsedMs}ms${flag}`,

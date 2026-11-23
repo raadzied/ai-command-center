@@ -2,9 +2,12 @@ import type {
   ClassifiedAction,
   ApprovalResult,
   ApprovalDecision,
+  RunScope,
 } from '../types.js';
 import { logger as log } from '../llm/logger.js';
 import { isActionAllowed, requiresConfirmation } from './settings.js';
+import { throwIfAborted } from '../core/run-control.js';
+import type { RunPhaseListener } from '../core/run-control.js';
 
 // معرّف مراجعة فريد
 function generateAuditId(): string {
@@ -12,7 +15,7 @@ function generateAuditId(): string {
 }
 
 export interface ApprovalStrategy {
-  ask(action: ClassifiedAction, auditId: string): Promise<ApprovalDecision>;
+  ask(action: ClassifiedAction, auditId: string, scope?: RunScope): Promise<ApprovalDecision>;
 }
 
 let currentStrategy: ApprovalStrategy | null = null;
@@ -34,7 +37,11 @@ export function getApprovalStrategy(): ApprovalStrategy {
 
 export async function requestApproval(
   action: ClassifiedAction,
+  scope?: RunScope,
+  signal?: AbortSignal,
+  onPhase?: RunPhaseListener,
 ): Promise<ApprovalResult> {
+  throwIfAborted(signal);
   const auditId = generateAuditId();
 
   if (!isActionAllowed(action.type)) {
@@ -54,7 +61,7 @@ export async function requestApproval(
       explanation: action.explanation,
     });
     console.log('');
-    console.log('🚫 عملية محجوبة تلقائيًا:');
+    console.log('[BLOCKED] عملية محجوبة تلقائيًا:');
     console.log(`   النوع: ${action.type}`);
     console.log(`   الهدف: ${action.target}`);
     console.log(`   السبب: ${action.explanation}`);
@@ -73,7 +80,9 @@ export async function requestApproval(
   }
 
   // REVIEW — نسأل المستخدم عبر الاستراتيجية المحقونة
-  const decision = await getApprovalStrategy().ask(action, auditId);
+  onPhase?.('AWAITING_APPROVAL');
+  const decision = await getApprovalStrategy().ask(action, auditId, scope);
+  throwIfAborted(signal);
   log.info('Approval decision', {
     auditId,
     decision,

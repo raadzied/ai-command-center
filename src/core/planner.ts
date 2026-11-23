@@ -14,8 +14,9 @@ export interface Plan {
 export async function createPlan(
   input: string,
   _context: Context,
+  signal?: AbortSignal,
 ): Promise<Plan> {
-  const classification = await classify(input);
+  const classification = await classify(input, signal);
 
   log.info('Plan created', {
     intent: classification.intent,
@@ -27,7 +28,7 @@ export async function createPlan(
   }
 
   // حاول التفكيك إلى مهام
-  const decomposed = await decompose(input);
+  const decomposed = await decompose(input, signal);
 
   let tasks: Task[];
   if (decomposed.length > 0) {

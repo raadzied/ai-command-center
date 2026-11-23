@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import { z } from 'zod';
 import { logger } from './logger.js';
+import { fetchWithTimeout } from './request-control.js';
 import type { LLMProvider, ClassificationResult, Intent } from '../types.js';
 
 const log = logger;
@@ -27,15 +28,6 @@ function getKey(name: 'GROQ_API_KEY' | 'GEMINI_API_KEY'): string {
     throw new Error(`${name} is not set. Check your .env file.`);
   }
   return v;
-}
-
-// fetch مع مهلة زمنية
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs = 30000,
-): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
 }
 
 const CLASSIFY_SYSTEM_PROMPT = `You are an intent classifier for an AI agent system. Classify the user message into EXACTLY ONE of these intents:
@@ -76,6 +68,7 @@ async function requestClassification(
   apiKey: string,
   input: string,
   isRetry: boolean,
+  signal?: AbortSignal,
 ): Promise<GroqResponse | null> {
   const userContent = isRetry ? `${input}\nReturn valid JSON only. No other text.` : input;
 
@@ -101,7 +94,7 @@ async function requestClassification(
           temperature: 0.1,
           max_tokens: 200,
         }),
-      },
+      }, 30000, signal,
     );
 
     if (!response.ok) {
@@ -137,15 +130,16 @@ async function requestClassification(
 }
 
 // يصنف نية المستخدم عبر Groq مع fallback آمن
-export async function classify(input: string): Promise<ClassificationResult> {
+export async function classify(input: string, signal?: AbortSignal): Promise<ClassificationResult> {
   const apiKey = getKey('GROQ_API_KEY');
   try {
-    const first = await requestClassification(apiKey, input, false);
+    const first = await requestClassification(apiKey, input, false, signal);
     if (first) return first;
     log.warn('Retrying classification once');
-    const second = await requestClassification(apiKey, input, true);
+    const second = await requestClassification(apiKey, input, true, signal);
     return second ?? fallbackResult('classification failed after retry');
   } catch (err) {
+    if (signal?.aborted) throw err;
     log.warn('Classification request failed, using fallback', { err });
     return fallbackResult('classification failed');
   }

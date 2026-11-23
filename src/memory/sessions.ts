@@ -125,6 +125,20 @@ export function renameSession(
   }
 }
 
+/** يحذف الجلسة ورسائلها ومتجهاتها في معاملة واحدة. يعيد true إن حُذفت. */
+export function deleteSession(db: Database.Database, sessionId: number): boolean {
+  const run = db.transaction((id: number): boolean => {
+    db.prepare<[number]>(
+      `DELETE FROM conversations_vec WHERE conversation_id IN
+       (SELECT id FROM conversations WHERE session_id = ?)`,
+    ).run(id);
+    db.prepare<[number]>('DELETE FROM conversations WHERE session_id = ?').run(id);
+    const info = db.prepare<[number]>('DELETE FROM sessions WHERE id = ?').run(id);
+    return info.changes > 0;
+  });
+  return run(sessionId);
+}
+
 /** يحدّث updated_at بعد حفظ رسائل الجلسة. */
 export function touchSession(db: Database.Database, id: number): void {
   const info = db

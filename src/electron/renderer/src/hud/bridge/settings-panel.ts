@@ -11,6 +11,7 @@ const PERMISSIONS: AssistantPermission[] = [
   'terminal',
   'http_request',
   'git_operation',
+  'mcp_tool',
 ];
 
 async function changeMode(

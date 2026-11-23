@@ -1,65 +1,110 @@
-import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
+import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { logger as log } from '../llm/logger.js';
 
 export interface TscResult {
   ok: boolean;
   errors: string[];
+  /** true = تم التخطّي (مشروع بلا tsconfig أو بلا typescript) — لا فشل. */
+  skipped?: boolean;
 }
 export interface TscOptions {
   tscPath?: string;
+  /** جذر مجلد المشروع — الافتراضي process.cwd() لنداءات CLI القديمة. */
+  workspaceRoot?: string;
 }
 
-// يستدعي tsc ويُعيد فقط الأخطاء التي تخص paths المُمرَّرة.
+/** مهلة التشغيل بالمللي ثانية — يُقتل بعدها حتى لا تتجمد نوافذ Electron. */
+const TSC_TIMEOUT_MS = 20_000;
+
+/** ناتج عملية spawn واحدة. */
+interface TscOutcome {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  error: string | null;
+  timedOut: boolean;
+}
+
+// يستدعي tsc بشكل غير متزامن (spawn + Promise) ويُعيد أخطاء ملفاتنا فقط.
 // fail-closed: عند أي شك في فشل tsc نفسه → ok:false.
-export function validateTscFiles(
+export async function validateTscFiles(
   paths: string[],
   options: TscOptions = {},
-): TscResult {
+): Promise<TscResult> {
   if (paths.length === 0) return { ok: true, errors: [] };
 
-  const tscPath =
-    options.tscPath ??
-    resolve(process.cwd(), 'node_modules/typescript/bin/tsc');
+  const root = options.workspaceRoot ?? process.cwd();
+  const tsconfigPath = join(root, 'tsconfig.json');
+  const projectTscPath = join(root, 'node_modules', 'typescript', 'bin', 'tsc');
+  const tscPath = options.tscPath ?? projectTscPath;
 
-  if (!existsSync(tscPath)) {
-    log.warn('tsc binary not found', { tscPath });
-    return { ok: false, errors: [`tsc binary not found at: ${tscPath}`] };
+  // مشروع بلا TypeScript (Python/HTML…): تخطٍّ صريح بلا فشل وبلا فحص مجلد APEX
+  if (!existsSync(tsconfigPath) || !existsSync(projectTscPath)) {
+    log.info('tsc validation skipped — no tsconfig.json or typescript here', {
+      root,
+    });
+    return { ok: true, skipped: true, errors: [] };
   }
 
-  let result: ReturnType<typeof spawnSync>;
+  let child: ChildProcess;
   try {
-    result = spawnSync(
-      process.execPath,
-      [tscPath, '--noEmit'],
-      { encoding: 'utf-8', timeout: 60000, shell: false },
-    );
+    child = spawn(process.execPath, [tscPath, '--noEmit'], {
+      cwd: root,
+      shell: false,
+      windowsHide: true,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log.warn('tsc spawn threw', { message: msg });
     return { ok: false, errors: [`tsc could not run: ${msg}`] };
   }
 
-  // فشل spawnSync نفسه
-  if (result.error) {
-    const msg = result.error.message;
-    log.warn('tsc spawn error', { message: msg });
-    return { ok: false, errors: [`tsc spawn error: ${msg}`] };
+  const outcome = await new Promise<TscOutcome>((resolveOutcome) => {
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill();
+    }, TSC_TIMEOUT_MS);
+
+    child.stdout?.setEncoding('utf-8');
+    child.stderr?.setEncoding('utf-8');
+    child.stdout?.on('data', (chunk: string): void => {
+      stdout += chunk;
+    });
+    child.stderr?.on('data', (chunk: string): void => {
+      stderr += chunk;
+    });
+    child.on('error', (err: NodeJS.ErrnoException): void => {
+      clearTimeout(timer);
+      resolveOutcome({ code: null, stdout, stderr, error: err.message, timedOut });
+    });
+    child.on('close', (code: number | null): void => {
+      clearTimeout(timer);
+      resolveOutcome({ code, stdout, stderr, error: null, timedOut });
+    });
+  });
+
+  // فشل spawn نفسه (ENOENT …)
+  if (outcome.error !== null) {
+    log.warn('tsc spawn error', { message: outcome.error });
+    return { ok: false, errors: [`tsc spawn error: ${outcome.error}`] };
   }
 
-  // قُتل بإشارة
-  if (result.status === null) {
-    log.warn('tsc killed by signal', { signal: result.signal });
-    return { ok: false, errors: [`tsc killed by signal: ${result.signal ?? 'unknown'}`] };
+  // انتهت المهلة وقُتل
+  if (outcome.timedOut) {
+    log.warn('tsc timed out', { timeoutMs: TSC_TIMEOUT_MS });
+    return { ok: false, errors: [`tsc timed out after ${TSC_TIMEOUT_MS}ms`] };
   }
 
-  const stdout = typeof result.stdout === 'string' ? result.stdout : '';
-  const stderr = typeof result.stderr === 'string' ? result.stderr : '';
-  const output = stdout + '\n' + stderr;
+  const output = outcome.stdout + '\n' + outcome.stderr;
 
   // نجاح
-  if (result.status === 0) {
+  if (outcome.code === 0) {
     log.info('tsc validation passed', { files: paths.length });
     return { ok: true, errors: [] };
   }
@@ -79,13 +124,13 @@ export function validateTscFiles(
   // فشل tsc لكن لا أخطاء مطابقة لملفاتنا → fail-closed
   if (relevant.length === 0) {
     log.warn('tsc failed with no matching errors', {
-      status: result.status,
+      status: outcome.code,
       outputLines: lines.length,
     });
     return {
       ok: false,
       errors: [
-        `tsc exited with status ${result.status} but no errors matched checked files (other errors may exist in project)`,
+        `tsc exited with status ${outcome.code} but no errors matched checked files (other errors may exist in project)`,
       ],
     };
   }

@@ -1,4 +1,6 @@
 // النية المستخرجة من مدخلات المستخدم
+import type { FileDiffPreview } from './tools/diff.js';
+
 export type Intent = 'learn' | 'build' | 'design' | 'chat';
 
 // الوكيل المسؤول عن المهمة
@@ -62,6 +64,13 @@ export interface Context {
   projectId?: number;
   memories: MemoryItem[];
   userProfile?: UserProfile;
+  scope?: RunScope;
+  /** ملخص قراءة فقط لبنية وإعدادات المشروع المحدد. */
+  projectBriefText?: string;
+  /** مهارات تعليماتية مُفعّلة — نص للقراءة فقط، منفصلة عن `memories` للـ RAG. */
+  instructionSkills?: ReadonlyArray<{ name: string; description: string; body: string }>;
+  /** أدوات MCP المتصلة بصيغة نصية مختصرة للوكيل. */
+  mcpToolsText?: string;
   // آخر رسائل الجلسة الحالية (الأقدم أولًا) — تُمرَّر لمسار الدردشة
   recentMessages?: Array<{
     role: 'user' | 'agent';
@@ -132,7 +141,8 @@ export type ActionType =
   | 'file_delete'
   | 'terminal'
   | 'http_request'
-  | 'git_operation';
+  | 'git_operation'
+  | 'mcp_tool';
 
 // مستوى الخطر
 export type RiskLevel = 'safe' | 'review' | 'dangerous';
@@ -143,6 +153,7 @@ export interface ProposedAction {
   target: string;
   reason: string;
   overwrite?: boolean;
+  preview?: FileDiffPreview;
 }
 
 // تصنيف العملية

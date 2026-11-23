@@ -6,6 +6,8 @@ export interface ToolMeta {
   riskLevel: 'read_only' | 'writes' | 'executes';
   // الأدوات التي يسمح لها باستخدام هذه الأداة
   allowedAgents: string[];
+  /** Set for runtime-registered MCP tools; removable via unregisterTool. */
+  dynamic?: boolean;
 }
 
 // السجل الديناميكي للأدوات
@@ -16,6 +18,17 @@ export function registerTool(meta: ToolMeta): void {
     throw new Error(`Tool already registered: ${meta.name}`);
   }
   tools.set(meta.name, meta);
+}
+
+export function unregisterTool(name: string): boolean {
+  const tool = tools.get(name);
+  if (!tool || tool.dynamic !== true) return false;
+  return tools.delete(name);
+}
+
+/** Only runtime-registered MCP tools are listed here. */
+export function listDynamicTools(): ToolMeta[] {
+  return Array.from(tools.values()).filter((tool) => tool.dynamic === true);
 }
 
 export function getTool(name: string): ToolMeta | null {

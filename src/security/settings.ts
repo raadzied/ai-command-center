@@ -16,6 +16,7 @@ const PERMISSION_IDS: readonly PermissionId[] = [
   'terminal',
   'http_request',
   'git_operation',
+  'mcp_tool',
 ];
 
 const DEFAULT_PERMISSIONS: Record<PermissionId, boolean> = {
@@ -25,6 +26,9 @@ const DEFAULT_PERMISSIONS: Record<PermissionId, boolean> = {
   terminal: false,
   http_request: false,
   git_operation: false,
+  // mcp_tool is allowed by the permission gate, but every call is still
+  // classified as `review` and goes through the per-window approval bridge.
+  mcp_tool: true,
 };
 
 const SETTING_PREFIX = 'assistant:';

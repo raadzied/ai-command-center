@@ -6,8 +6,10 @@ import type { IpcMainInvokeEvent } from 'electron';
 import { logger as log } from '../llm/logger.js';
 import type { RunScope } from '../types.js';
 import { processInputScoped } from '../core/loop.js';
+import { RunCancelledError } from '../core/run-control.js';
 import { getDb } from '../memory/db.js';
 import { getWindowEntry, setWindowRunning } from './window-registry.js';
+import { finishWindowRun, startWindowRun } from './run-ipc.js';
 
 interface ProcessInputResult {
   ok: boolean;
@@ -40,13 +42,16 @@ export function setupProcessInputIpc(): void {
 
     // Snapshot the scope before running; the run must not observe later switches.
     const snapshot: RunScope = { ...entry.scope };
+    if (typeof text !== 'string' || text.trim().length === 0) {
+      return { ok: false, error: 'الطلب فارغ أو غير صالح' };
+    }
     setWindowRunning(win, true);
+    const run = startWindowRun(event.sender);
 
     try {
-      if (typeof text !== 'string' || text.trim().length === 0) {
-        return { ok: false, error: 'الطلب فارغ أو غير صالح' };
-      }
       const result = await processInputScoped(text.trim(), snapshot, {
+        signal: run.signal,
+        onPhase: (phase, detail): void => run.setPhase(phase, detail),
         onAgentActive: (agent): void => {
           // Broadcast only to the sender, never getAllWindows()[0].
           event.sender.send('agent:active', agent);
@@ -63,10 +68,15 @@ export function setupProcessInputIpc(): void {
         elapsedMs: result.elapsedMs,
       };
     } catch (err) {
+      if (err instanceof RunCancelledError) {
+        log.info('processInput cancelled', { senderId: event.sender.id });
+        return { ok: false, error: 'Run cancelled' };
+      }
       const msg = err instanceof Error ? err.message : String(err);
       log.error('processInput failed', { message: msg });
       return { ok: false, error: msg };
     } finally {
+      finishWindowRun(event.sender.id);
       setWindowRunning(win, false);
     }
   });

@@ -15,7 +15,7 @@ export function registerVoiceHandlers(): void {
 
   ipcMain.handle('voice:stop', (): void => {
     cancelSpeech();
-    const win = BrowserWindow.getAllWindows()[0];
+    const win = BrowserWindow.getFocusedWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send('voice:stop-audio');
     }
@@ -42,7 +42,8 @@ export function registerVoiceHandlers(): void {
 
   setVoiceEnabled(true);
   setElectronAudioEmitter((payload) => {
-    const win = BrowserWindow.getAllWindows()[0];
+    // Only the focused window may play audio — never a background project.
+    const win = BrowserWindow.getFocusedWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send('voice:audio', payload);
     }

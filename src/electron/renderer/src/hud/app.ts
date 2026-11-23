@@ -1,6 +1,6 @@
 import { createAudio } from './audio';
 import { drawConstellationPaths } from './constellation';
-import { AGENTS, MEMORY_ENTRIES, MCP_SERVERS, RESOURCES, SYSTEM_LOGS } from './data';
+import { AGENTS, MEMORY_ENTRIES, RESOURCES, SYSTEM_LOGS } from './data';
 import { byId, clamp, errorMessage, formatTime } from './dom';
 import {
   closeInspector as closeInspectorDrawer,
@@ -47,7 +47,7 @@ export class ApexHud implements ApexHudApi {
     };
     this.agents = AGENTS.map((agent: AgentNode): AgentNode => ({ ...agent, logs: [...agent.logs] }));
     this.resources = RESOURCES.map((resource: ResourceNode): ResourceNode => ({ ...resource }));
-    this.mcpServers = MCP_SERVERS.map((server: McpServer): McpServer => ({ ...server }));
+    this.mcpServers = [];
     this.memoryEntries = MEMORY_ENTRIES.map((entry: MemoryEntry): MemoryEntry => ({ ...entry }));
     this.systemLogs = SYSTEM_LOGS.map((log: SystemLog): SystemLog => ({ ...log }));
     this.audio = createAudio();

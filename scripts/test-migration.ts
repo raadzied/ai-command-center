@@ -98,7 +98,9 @@ function seedLegacyDb(path: string): void {
 }
 
 function verifyMigrated(db: Database.Database): void {
-  check('user_version is 1', readUserVersion(db) === 1);
+  check('user_version is 2', readUserVersion(db) === 2);
+  check('v2 installed_skills table exists', hasTable(db, 'installed_skills'));
+  check('v2 mcp_servers table exists', hasTable(db, 'mcp_servers'));
   check('projects.root_path exists', tableColumns(db, 'projects').includes('root_path'));
   check('projects.last_opened_at exists', tableColumns(db, 'projects').includes('last_opened_at'));
   check('conversations.session_id exists', tableColumns(db, 'conversations').includes('session_id'));
@@ -184,7 +186,7 @@ function main(): void {
 
     const reopened = openDb(legacyPath);
     try {
-      check('reopen keeps user_version 1', readUserVersion(reopened) === 1);
+      check('reopen keeps user_version 2', readUserVersion(reopened) === 2);
       check(
         'reopen is idempotent (no second backup)',
         readdirSync(dir).filter((file) => file.startsWith('legacy.db.backup-v0-')).length === 1,
@@ -195,7 +197,7 @@ function main(): void {
 
     const fresh = openDb(freshPath);
     try {
-      check('fresh DB migrated to user_version 1', readUserVersion(fresh) === 1);
+      check('fresh DB migrated to user_version 2', readUserVersion(fresh) === 2);
       check('fresh DB has sessions table', hasTable(fresh, 'sessions'));
       check(
         'fresh DB needs no backup',

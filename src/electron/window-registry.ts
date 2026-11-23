@@ -39,8 +39,15 @@ export function unregisterWindow(win: BrowserWindow): void {
 /**
  * Get the WindowEntry for a given webContents id.
  */
-export function getWindowEntry(webContentsId: number): WindowEntry | undefined {
-  return windows.get(webContentsId);
+export function getWindowEntry(id: number): WindowEntry | undefined {
+  const direct = windows.get(id);
+  if (direct) return direct;
+  // RunScope.windowId holds BrowserWindow.id, while the registry is keyed by
+  // webContents.id. Both ids are allocated separately; accept either one.
+  for (const entry of windows.values()) {
+    if (entry.win.id === id) return entry;
+  }
+  return undefined;
 }
 
 /**

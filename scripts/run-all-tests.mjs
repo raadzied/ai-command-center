@@ -14,9 +14,18 @@ const UNIT_TESTS = [
   'scripts/test-build-start.mjs',
   'scripts/test-filesystem-security.ts',
   'scripts/test-task-failure.ts',
+  'scripts/test-run-cancel.ts',
+  'scripts/test-project-brief.ts',
   'scripts/test-loop.ts',
   'scripts/test-loop-scope.ts',
   'scripts/test-migration.ts',
+  'scripts/test-v2-catalogs.ts',
+  'scripts/test-skills-manager.ts',
+  'scripts/test-mcp-manager.ts',
+  'scripts/test-diff-approval.ts',
+  'scripts/test-mcp-markers.ts',
+  'scripts/test-mkdir-markers.ts',
+  'scripts/test-review-degraded.ts',
   'scripts/test-projects.ts',
 ];
 
@@ -41,7 +50,7 @@ function runSuite(label, files) {
 
   for (const file of files) {
     if (!existsSync(file)) {
-      console.error(`  ❌ MISSING: ${file}`);
+      console.error(`  [FAIL] MISSING: ${file}`);
       failed++;
       continue;
     }
@@ -58,7 +67,7 @@ function runSuite(label, files) {
       passed++;
     } else {
       failed++;
-      console.error(`  ❌ FAILED: ${file} (exit ${r.status})`);
+      console.error(`  [FAIL] FAILED: ${file} (exit ${r.status})`);
     }
   }
 
@@ -77,7 +86,7 @@ function main() {
 
   let liveResult = { passed: 0, failed: 0 };
   if (liveMode) {
-    console.log('\n⚠️  Live tests require API keys and consume quota.');
+    console.log('\n[LIVE] Live tests require API keys and consume quota.');
     liveResult = runSuite('LIVE TESTS (real API)', LIVE_TESTS);
   }
 
@@ -89,7 +98,7 @@ function main() {
   console.log(`${'='.repeat(60)}\n`);
 
   if (!liveMode) {
-    console.log('ℹ️  Live tests skipped. Run "npm run test:live" to include them.\n');
+    console.log('[INFO] Live tests skipped. Run "npm run test:live" to include them.\n');
   }
 
   process.exit(totalFailed === 0 ? 0 : 1);

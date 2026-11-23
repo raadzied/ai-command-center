@@ -2,34 +2,36 @@ import { logger as log } from '../llm/logger.js';
 import { extractAndSaveSkill } from './skills.js';
 import { MAX_RETRIES } from './quality-gate.js';
 import { validateTscFiles } from '../tools/tsc-validate.js';
+import { processMcpMarkers } from '../tools/mcp-markers.js';
+import { RunCancelledError, throwIfAborted } from './run-control.js';
 import type { MarkerResult } from '../tools/markers.js';
+import type { RunPhaseListener } from './run-control.js';
 import type {
   AgentName,
   Context,
   QualityInput,
-  QualityResult,
+  QualityResult, RunScope,
   Task,
   TaskSummary,
 } from '../types.js';
 
-/** وكيل قابل للتنفيذ — مجموعة فرعية من Agent في registry. */
 export type TaskAgent = {
   readonly name: AgentName;
-  execute(task: Task, context: Context): Promise<{ content: string }>;
+  execute(task: Task, context: Context, options?: { signal?: AbortSignal }): Promise<{ content: string }>;
 };
 
-/** التبعيات التي يحتاجها تنفيذ مهمة واحدة (مجموعة فرعية من LoopDeps). */
 export interface TaskRunnerDeps {
   selectAgent: (task: Task) => TaskAgent | null;
-  evaluateQuality: (input: QualityInput) => Promise<QualityResult>;
-  processMarkers: (text: string) => Promise<MarkerResult>;
+  evaluateQuality: (input: QualityInput, signal?: AbortSignal) => Promise<QualityResult>;
+  processMarkers: (text: string, signal?: AbortSignal, onPhase?: RunPhaseListener) => Promise<MarkerResult>;
+  scope?: RunScope;
   enqueueSpeech: (text: string, agent: string | null) => void;
   onAgentActive?: (agentName: AgentName | null) => void;
+  signal?: AbortSignal;
+  onPhase?: RunPhaseListener;
 }
-
 export interface TaskRunInput {
   readonly task: Task;
-  /** فهرس صفري داخل الخطة المرتّبة. */
   readonly index: number;
   readonly total: number;
   readonly context: Context;
@@ -46,10 +48,18 @@ export interface TaskRunResult {
 
 function enrichTask(task: Task, prevOutput: string): Task {
   if (prevOutput.length === 0) return task;
-  const priorContext =
-    `# مخرجات المهام السابقة (سياق، ليست طلبًا من المستخدم):\n` +
-    `${prevOutput}\n\n# مهمتك:\n${task.description}`;
+  const priorContext = `# مخرجات المهام السابقة (سياق، ليست طلبًا من المستخدم):\n${prevOutput}\n\n# مهمتك:\n${task.description}`;
   return { ...task, description: `${task.description}\n\n${priorContext}` };
+}
+
+function applyMcpCalls(content: string, context: Context, deps: TaskRunnerDeps): Promise<string> {
+  if (!content.includes('[[MCP_CALL:')) return Promise.resolve(content);
+  deps.onPhase?.('APPLYING_CHANGES');
+  return processMcpMarkers(content, context.scope, deps.signal).then((result): string => {
+    if (result.toolOutputs.length === 0) return result.cleanedContent;
+    log.info('MCP markers executed', { count: result.executedCount });
+    return `${result.cleanedContent}\n\n# MCP Tool Results\n${result.toolOutputs.join('\n')}`;
+  });
 }
 
 async function applyMarkers(
@@ -58,28 +68,21 @@ async function applyMarkers(
   content: string,
 ): Promise<string> {
   if (agentName !== 'coder') return content;
-
-  const markerResult = await deps.processMarkers(content);
+  throwIfAborted(deps.signal); deps.onPhase?.('APPLYING_CHANGES');
+  const markerResult = await deps.processMarkers(content, deps.signal, deps.onPhase);
+  throwIfAborted(deps.signal);
   let display = markerResult.cleanedContent + markerResult.writeStatus;
-  if (markerResult.totalMarkers > 0) {
-    log.info('Markers processed', {
-      total: markerResult.totalMarkers,
-      wrote: markerResult.wroteCount,
-      rejected: markerResult.rejectedCount,
-    });
-  }
-
-  const tsFiles = markerResult.wrotePaths.filter(
-    (p) => p.endsWith('.ts') || p.endsWith('.tsx'),
-  );
-  if (tsFiles.length === 0) return display;
-
-  const tscResult = validateTscFiles(tsFiles);
+  if (markerResult.totalMarkers > 0) log.info('Markers processed', {
+    total: markerResult.totalMarkers, wrote: markerResult.wroteCount, rejected: markerResult.rejectedCount,
+  });
+  const tsFiles = markerResult.wrotePaths.filter((p) => p.endsWith('.ts') || p.endsWith('.tsx'));
+  if (tsFiles.length === 0 || deps.scope?.kind === 'daily') return display;
+  deps.onPhase?.('VALIDATING'); throwIfAborted(deps.signal);
+  const tscResult = await validateTscFiles(tsFiles, deps.scope?.kind === 'workspace' ? { workspaceRoot: deps.scope.workspaceRoot } : {});
+  throwIfAborted(deps.signal);
   if (!tscResult.ok) {
     const errLines = tscResult.errors.slice(0, 5).map((e) => `  ${e}`).join('\n');
-    display +=
-      `\n\n⚠️ الملفات المكتوبة تكسر tsc:\n${errLines}\n` +
-      `   أصلحها قبل البناء.`;
+    display += `\n\n[WARN] الملفات المكتوبة تكسر tsc:\n${errLines}\n   أصلحها قبل البناء.`;
     log.warn('Generated files break tsc', { count: tscResult.errors.length });
   }
   return display;
@@ -91,29 +94,30 @@ interface QualityLoopResult {
   readonly unverified: boolean;
 }
 
-async function runQualityLoop(
-  deps: TaskRunnerDeps,
-  agent: TaskAgent,
-  task: Task,
-  context: Context,
-): Promise<QualityLoopResult> {
-  let output = await agent.execute(task, context);
+async function runQualityLoop(deps: TaskRunnerDeps, agent: TaskAgent, task: Task, context: Context): Promise<QualityLoopResult> {
+  throwIfAborted(deps.signal);
+  deps.onPhase?.('THINKING');
+  let output = await agent.execute(task, context, deps.signal ? { signal: deps.signal } : {});
+  throwIfAborted(deps.signal);
   let attempts = 0;
 
   while (attempts < MAX_RETRIES) {
-    const failureReason = output.content.includes('⚠️ [الرد مقطوع')
+    const failureReason = output.content.includes('[WARN] [الرد مقطوع')
       ? ('MAX_TOKENS' as const)
       : undefined;
     if (failureReason) {
       log.warn('Detected truncation', { reason: failureReason, agent: agent.name });
     }
 
+    throwIfAborted(deps.signal);
+    deps.onPhase?.('VALIDATING');
     const quality = await deps.evaluateQuality({
       agent: agent.name,
       task: task.description,
       output: output.content,
       ...(failureReason ? { failureReason } : {}),
-    });
+    }, deps.signal);
+    throwIfAborted(deps.signal);
 
     if (quality.status === 'PASS') {
       return { content: output.content, attempts, unverified: false };
@@ -126,36 +130,36 @@ async function runQualityLoop(
         return { content: output.content, attempts, unverified: false };
       }
       const issuesText = quality.issues.map((it) => `- ${it.description}`).join('\n');
+      deps.onPhase?.('THINKING');
       output = await agent.execute(
         {
           ...task,
           description:
             `${task.description}\n\n# ملاحظات المراجع:\n${issuesText}\n\nحسّن ردك.`,
         },
-        context,
+        context, deps.signal ? { signal: deps.signal } : {},
       );
+      throwIfAborted(deps.signal);
       continue;
     }
 
-    // REVIEW_ERROR
-    if (task.verificationRequired) {
-      throw new Error('تعذّر التحقق من المخرج (REVIEW_ERROR)');
+    if (quality.status === 'REVIEW_ERROR' && output.content.trim() !== '') {
+      log.warn('Reviewer unavailable — degraded pass', { agent: agent.name });
+      return { content: output.content, attempts, unverified: true };
     }
+    if (task.verificationRequired) throw new Error('تعذّر التحقق من المخرج (REVIEW_ERROR)');
     return { content: output.content, attempts, unverified: true };
   }
 
   return { content: output.content, attempts, unverified: false };
 }
 
-/** ينفّذ مهمة واحدة: وكيل → Quality Gate → markers → tsc → نطق → ملخص. */
-export async function runTask(
-  deps: TaskRunnerDeps,
-  input: TaskRunInput,
-): Promise<TaskRunResult> {
+export async function runTask(deps: TaskRunnerDeps, input: TaskRunInput): Promise<TaskRunResult> {
   const { task, index, total, context, prevOutput } = input;
   const taskStart = Date.now();
 
   try {
+    throwIfAborted(deps.signal);
     const agent = deps.selectAgent(task);
     if (!agent) {
       throw new Error('لا وكيل مناسب لهذه المهمة');
@@ -166,11 +170,11 @@ export async function runTask(
     log.info('Task start', { index: index + 1, of: total, agent: agent.name });
 
     const quality = await runQualityLoop(deps, agent, enrichedTask, context);
-    let finalContent = await applyMarkers(deps, agent.name, quality.content);
+    let finalContent = await applyMarkers(deps, agent.name, await applyMcpCalls(quality.content, context, deps));
 
     if (quality.attempts >= MAX_RETRIES && !quality.unverified) {
       finalContent =
-        `⚠️ [الرد لم يجتز المراجعة بعد ${MAX_RETRIES + 1} محاولات — ` +
+        `[WARN] [الرد لم يجتز المراجعة بعد ${MAX_RETRIES + 1} محاولات — ` +
         `قد يكون غير كامل]\n\n` + finalContent;
     }
 
@@ -180,7 +184,6 @@ export async function runTask(
         : '';
     const rendered = header + finalContent;
 
-    // نطق واحد فقط لمخرج المهمة (بعد معالجة markers ووسوم tsc)
     deps.enqueueSpeech(finalContent, agent.name);
 
     if (agent.name === 'mentor' && !quality.unverified) {
@@ -195,6 +198,7 @@ export async function runTask(
       agentUsed: agent.name,
     };
   } catch (err) {
+    if (err instanceof RunCancelledError) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     log.error('Task failed', {
       taskId: task.id,
@@ -206,7 +210,7 @@ export async function runTask(
     return {
       rendered:
         `─── المهمة ${index + 1}/${total}: ${task.description.split('\n')[0]} ───\n` +
-        `❌ فشلت: ${msg}`,
+        `[FAIL] فشلت: ${msg}`,
       rawOutput: '',
       summary: { id: task.id, agentName: task.agentName, status: 'failed', error: msg, elapsedMs: Date.now() - taskStart },
       unverified: false,

@@ -174,7 +174,7 @@ async function main(): Promise<void> {
       rmSync(tmpDir, { recursive: true, force: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`⚠️ cleanup failed: ${msg}`);
+      console.error(`[WARN] cleanup failed: ${msg}`);
     }
   }
 }

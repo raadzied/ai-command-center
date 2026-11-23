@@ -1,9 +1,10 @@
 import type { ApprovalRequestData } from '../../window';
 import { byId, errorMessage, esc } from '../dom';
-import type { ApexHudApi } from '../types';
+import type { ApexHudApi, RunPhase } from '../types';
 import { hideApprovalModal, showApprovalModal } from './approval';
 import { appendLiveSettings } from './settings-panel';
 import { createLiveSession } from './live-ui';
+import { refreshHudSnapshot } from './snapshot';
 import { updateWorkspaceContext, initProjectBridge } from './projects';
 
 interface AgentMeta {
@@ -12,19 +13,33 @@ interface AgentMeta {
 }
 
 const AGENT_META: Record<string, AgentMeta> = {
-  mentor: { node: 'advisor', label: 'Mentor' },
+  mentor: { node: 'mentor', label: 'Mentor' },
   coder: { node: 'coder', label: 'Coder' },
   designer: { node: 'designer', label: 'Designer' },
 };
 
 let pending = false;
-
+let lastRunPhase: RunPhase | null = null;
 const agentLabel = (name: string | null): string => (name ? AGENT_META[name]?.label ?? name : 'Core');
 
 interface ResponseMeta {
   agentUsed?: string | null;
   intent?: string;
   elapsedMs?: number;
+}
+
+function isRunPhase(value: string): value is RunPhase {
+  return ['IDLE', 'PLANNING', 'THINKING', 'AWAITING_APPROVAL', 'APPLYING_CHANGES',
+    'VALIDATING', 'DONE', 'CANCELLED', 'ERROR'].includes(value);
+}
+
+function showRunPhase(app: ApexHudApi, phase: RunPhase, detail?: string): void {
+  lastRunPhase = phase;
+  const status = phase === 'CANCELLED' ? 'HALTED' : phase === 'IDLE' || phase === 'DONE' || phase === 'ERROR' ? 'IDLE' : 'THINKING';
+  app.setCoreStatus(status);
+  const label = byId<HTMLElement>('status-label');
+  if (label) label.textContent = `STATUS: ${phase}`;
+  app.addSystemLog('Orchestrator', detail ? `${phase}: ${detail}` : `Run phase: ${phase}`);
 }
 
 function showResponse(app: ApexHudApi, content: string, meta: ResponseMeta): void {
@@ -66,6 +81,7 @@ async function dispatch(
   }
 
   pending = true;
+  lastRunPhase = null;
   app.setCoreStatus('THINKING');
   app.addSystemLog('You', raw);
   app.showToast('Dispatched to core...');
@@ -74,6 +90,11 @@ async function dispatch(
     const response = await api.sendInput(text);
     if (!response.ok || !response.content) {
       const message = response.error ?? 'Unknown error';
+      if (message === 'Run cancelled') {
+        app.addSystemLog('SAFETY', 'Run cancelled by user.');
+        app.showToast('Run cancelled');
+        return null;
+      }
       app.addSystemLog('Core', `Error: ${message}`);
       app.showToast(`Core error: ${message.slice(0, 80)}`);
       return null;
@@ -91,9 +112,8 @@ async function dispatch(
     return null;
   } finally {
     pending = false;
-    app.setCoreStatus('IDLE');
-    app.renderWings();
-    void app.refreshMemoryStats();
+    if (lastRunPhase !== 'CANCELLED') app.setCoreStatus('IDLE');
+    app.renderWings(); void app.refreshMemoryStats(); void refreshHudSnapshot(app);
   }
 }
 
@@ -103,16 +123,14 @@ export function bindBridge(app: ApexHudApi): void {
   if (!api) return;
 
   // Initialize workspace/project/session bridge
-  initProjectBridge(app);
-  updateWorkspaceContext(app);
+  initProjectBridge(app); updateWorkspaceContext(app);
 
   const session = createLiveSession(app, api, (text: string): Promise<string | null> =>
     dispatch(app, api, text, true),
   );
 
   app.addSystemLog('Orchestrator', 'Electron IPC bridge connected — live core online.');
-  app.setCoreStatus('IDLE');
-  void app.refreshMemoryStats();
+  app.setCoreStatus('IDLE'); void app.refreshMemoryStats();
 
   api.onAgentActive((agent: string | null): void => {
     if (!agent) {
@@ -136,6 +154,11 @@ export function bindBridge(app: ApexHudApi): void {
     app.addSystemLog('Orchestrator', `Task ${index}/${total} started`);
     app.showToast(`Task ${index}/${total} running...`);
     app.triggerBurst(1500);
+  });
+
+  api.onRunPhase(({ phase, detail }): void => {
+    if (isRunPhase(phase)) showRunPhase(app, phase, detail);
+    else app.addSystemLog('Orchestrator', `Unknown run phase: ${phase}`);
   });
 
   api.onApprovalRequest((request: ApprovalRequestData): void => {
@@ -170,7 +193,11 @@ export function bindBridge(app: ApexHudApi): void {
   byId<HTMLButtonElement>('btn-kill')?.addEventListener('click', (): void => {
     if (app.state.coreStatus !== 'HALTED') return;
     session.stopAudio();
-    app.addSystemLog('SAFETY', 'Voice playback stopped. Backend tasks keep their own state.');
+    void api.cancelRun().then((result): void => {
+      app.addSystemLog('SAFETY', result.cancelled ? 'Active run cancellation requested.' : 'No active run to cancel.');
+    }).catch((error: unknown): void => {
+      app.addSystemLog('SAFETY', `Cancellation failed: ${errorMessage(error)}`);
+    });
   });
 
   byId<HTMLButtonElement>('btn-voice')?.addEventListener('click', (): void => {

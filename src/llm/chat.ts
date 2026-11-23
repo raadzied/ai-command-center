@@ -1,5 +1,9 @@
 import 'dotenv/config';
 import { logger as log } from './logger.js';
+import { fetchWithTimeout, waitForRetry } from './request-control.js';
+import { chatGroq } from './groq.js';
+
+export { chatGroq };
 
 /** رسالة سابقة تُمرَّر لبناء سياق متعدد الأدوار. */
 export interface ChatHistoryMessage {
@@ -17,16 +21,14 @@ export interface ChatOptions {
   jsonMode?: boolean;
   // رسائل الجلسة السابقة (الأقدم أولًا) — تُضاف قبل رسالة المستخدم الحالية.
   history?: ReadonlyArray<ChatHistoryMessage>;
+  /** إلغاء التشغيل الحالي، يقطع طلب المزود فورًا. */
+  signal?: AbortSignal;
 }
 
 function getKey(): string {
   const v = process.env.GEMINI_API_KEY;
   if (!v) throw new Error('GEMINI_API_KEY is not set. Check your .env file.');
   return v;
-}
-
-function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 60000): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
 }
 
 // يقرأ Retry-After من رأس الاستجابة (بالثواني)
@@ -86,7 +88,7 @@ export async function chat(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-      });
+      }, 60000, options.signal);
       if (response.ok) break outer;
 
       lastStatus = response.status;
@@ -97,7 +99,7 @@ export async function chat(
         const computedDelay = 1000 * Math.pow(2, attempt - 1);
         const delayMs = Math.min(retryAfter ?? computedDelay, 30000);
         log.warn(`Gemini ${model} attempt ${attempt} failed`, { status: lastStatus, retryInMs: delayMs });
-        await new Promise((r) => setTimeout(r, delayMs));
+        await waitForRetry(delayMs, options.signal);
       }
     }
     log.warn(`Switching to fallback model after ${model} failed`, { status: lastStatus });
@@ -138,81 +140,7 @@ function extractText(data: unknown): string {
   // اكشف القطع بسبب حد الرموز
   if (first['finishReason'] === 'MAX_TOKENS') {
     log.warn('Response truncated by MAX_TOKENS');
-    return text + '\n\n⚠️ [الرد مقطوع — تجاوز حد الرموز]';
+    return text + '\n\n[WARN] [الرد مقطوع — تجاوز حد الرموز]';
   }
   return text;
-}
-
-// بديل Groq لدردشة عامة — يُستخدم للمهام التحليلية البسيطة
-export async function chatGroq(
-  system: string,
-  user: string,
-  options: ChatOptions = {},
-): Promise<string> {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    throw new Error('GROQ_API_KEY not set');
-  }
-
-  const modelsRaw = options.preferredModel
-    ? options.preferredModel
-    : process.env.GROQ_CHAT_MODELS ?? 'openai/gpt-oss-20b,openai/gpt-oss-120b';
-  const models = modelsRaw.split(',').map((m) => m.trim()).filter(Boolean);
-
-  const history = (options.history ?? []).map((m) => ({
-    role: m.role === 'agent' ? 'assistant' : 'user', content: m.content,
-  }));
-  const body: Record<string, unknown> = {
-    messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: user }],
-    temperature: options.temperature ?? 0.2,
-    max_tokens: options.maxTokens ?? 500,
-  };
-  if (options.jsonMode !== false) {
-    body.response_format = { type: 'json_object' };
-  }
-
-  // Groq يُرجع 400 أحيانًا عند rate limiting على مستوى الـ burst،
-  // لذا نعتبره قابلًا لإعادة المحاولة مع الموديل التالي.
-  const retryable = [400, 404, 408, 409, 425, 429, 500, 502, 503, 504];
-
-  for (const model of models) {
-    const response = await fetchWithTimeout(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...body, model }),
-      },
-    );
-
-    if (!response.ok) {
-      log.warn('Groq chat model failed', { model, status: response.status });
-      if (!retryable.includes(response.status)) break;
-      continue;
-    }
-
-    const data = (await response.json()) as unknown;
-    const text = extractGroqContent(data);
-    if (text !== null) {
-      log.info('Groq chat succeeded', { model });
-      return text;
-    }
-  }
-
-  throw new Error('All Groq chat models failed');
-}
-
-function pickRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-// يستخرج نص المحتوى من استجابة Groq (OpenAI-compatible)
-function extractGroqContent(data: unknown): string | null {
-  const choices = pickRecord(data)?.['choices'];
-  if (!Array.isArray(choices) || choices.length === 0) return null;
-  const message = pickRecord(pickRecord(choices[0])?.['message']);
-  const content = message?.['content'];
-  return typeof content === 'string' ? content : null;
 }

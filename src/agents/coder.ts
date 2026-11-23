@@ -1,5 +1,5 @@
 import type { AgentName, Task, Context } from '../types.js';
-import type { Agent, AgentOutput } from './base.js';
+import type { Agent, AgentExecutionOptions, AgentOutput } from './base.js';
 import { buildContextText } from './base.js';
 import { chat } from '../llm/chat.js';
 import { logger as log } from '../llm/logger.js';
@@ -42,6 +42,14 @@ const CODER_SYSTEM = `أنت Coder في نظام AI Command Center.
   نفسه.
 - الشرح والأمثلة التوضيحية الأخرى تبقى خارج marker.
 
+قاعدة إنشاء المجلدات (مشروع مفتوح):
+- إذا طلب المستخدم إنشاء مجلد أو هيكل مجلدات، أنشئه مباشرة بـ:
+  [[MKDIR: relative/path/to/folder]]
+- يمكنك استخدام حتى 10 وسوم MKDIR في الرد الواحد، وتُنفَّذ قبل الكتابة.
+- لإنشاء مجلد وملف داخله معاً، اذكر MKDIR ثم WRITE_FILE بالمسار الكامل للملف.
+- لا تطلب من المستخدم إنشاء المجلدات يدوياً، ولا تكتفِ بشرح الخطوات.
+- المسارات نسبية لجذر المشروع (لا مطلق، لا ..، ولا .git أو node_modules).
+
 قاعدة TypeScript strict:
 - المشروع يستخدم strict + useUnknownInCatchVariables.
 - داخل catch، استخدم:
@@ -58,7 +66,7 @@ export const coderAgent: Agent = {
   name: 'coder' as AgentName,
   systemPrompt: CODER_SYSTEM,
 
-  async execute(task: Task, context: Context): Promise<AgentOutput> {
+  async execute(task: Task, context: Context, options?: AgentExecutionOptions): Promise<AgentOutput> {
     const contextText = buildContextText(context);
 
     const userMessage = contextText
@@ -70,6 +78,7 @@ export const coderAgent: Agent = {
     const response = await chat(CODER_SYSTEM, userMessage, {
       temperature: 0.3,
       maxTokens: 5000,
+      ...(options?.signal ? { signal: options.signal } : {}),
     });
 
     return {

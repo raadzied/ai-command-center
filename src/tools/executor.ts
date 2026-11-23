@@ -1,10 +1,13 @@
-import type { ProposedAction } from '../types.js';
+import type { ProposedAction, RunScope } from '../types.js';
 import type { ApprovalResult } from '../types.js';
 import { classifyAction } from '../security/risk-engine.js';
 import { requestApproval } from '../security/approval.js';
 import { writeAudit } from '../security/audit.js';
 import { logger as log } from '../llm/logger.js';
 import { isActionAllowed } from '../security/settings.js';
+import { throwIfAborted } from '../core/run-control.js';
+import { RunCancelledError } from '../core/run-control.js';
+import type { RunPhaseListener } from '../core/run-control.js';
 
 // نتيجة تنفيذ عملية مع موافقة
 export interface ExecutionResult<T = unknown> {
@@ -18,7 +21,11 @@ export interface ExecutionResult<T = unknown> {
 export async function executeWithApproval<T>(
   action: ProposedAction,
   executor: () => Promise<T>,
+  scope?: RunScope,
+  signal?: AbortSignal,
+  onPhase?: RunPhaseListener,
 ): Promise<ExecutionResult<T>> {
+  throwIfAborted(signal);
   const classified = classifyAction(action);
 
   log.info('Tool action proposed', {
@@ -27,7 +34,8 @@ export async function executeWithApproval<T>(
     risk: classified.risk,
   });
 
-  const approval = await requestApproval(classified);
+  const approval = await requestApproval(classified, scope, signal, onPhase);
+  throwIfAborted(signal);
   if (
     (approval.decision === 'user_approved' ||
       approval.decision === 'auto_approved') &&
@@ -70,6 +78,7 @@ export async function executeWithApproval<T>(
 
   // تمت الموافقة — نفّذ
   try {
+    throwIfAborted(signal);
     const result = await executor();
     log.info('Tool action executed', {
       type: classified.type,
@@ -78,6 +87,7 @@ export async function executeWithApproval<T>(
     });
     return { approval, executed: true, result };
   } catch (err) {
+    if (err instanceof RunCancelledError) throw err;
     const message = err instanceof Error ? err.message : String(err);
     log.error('Tool action failed', {
       type: classified.type,

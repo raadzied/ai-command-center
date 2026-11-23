@@ -8,12 +8,14 @@ function subscribe(channel, callback) {
 
 contextBridge.exposeInMainWorld('api', {
   sendInput: (text) => ipcRenderer.invoke('process:input', text),
+  cancelRun: () => ipcRenderer.invoke('run:cancel'),
   respondApproval: (auditId, approved) => {
     ipcRenderer.send('approval:response', { auditId, approved });
   },
   onApprovalRequest: (callback) => subscribe('approval:request', callback),
   onAgentActive: (callback) => subscribe('agent:active', callback),
   onTaskStart: (callback) => subscribe('task:start', callback),
+  onRunPhase: (callback) => subscribe('run:phase', callback),
   getVoiceStatus: () => ipcRenderer.invoke('voice:status'),
   toggleVoice: (enabled) => ipcRenderer.invoke('voice:toggle', enabled),
   stopVoice: () => ipcRenderer.invoke('voice:stop'),
@@ -28,10 +30,22 @@ contextBridge.exposeInMainWorld('api', {
 
   // workspace bridge functions
   getWorkspaceContext: () => ipcRenderer.invoke('workspace:context'),
+  getProjectBrief: () => ipcRenderer.invoke('workspace:brief:get'),
+  refreshProjectBrief: () => ipcRenderer.invoke('workspace:brief:refresh'),
   pickFolder: () => ipcRenderer.invoke('workspace:pick-folder'),
   switchProject: (projectId, sessionId) => ipcRenderer.invoke('workspace:switch-project', projectId, sessionId),
   createSession: () => ipcRenderer.invoke('workspace:session:create'),
   selectSession: (sessionId) => ipcRenderer.invoke('workspace:session:select', sessionId),
-  renameSession: (newName) => ipcRenderer.invoke('workspace:session:rename', newName),
+  renameSession: (sessionId, newName) => ipcRenderer.invoke('workspace:session:rename', sessionId, newName),
+  deleteSession: (sessionId) => ipcRenderer.invoke('workspace:session:delete', sessionId),
   sessionMessages: () => ipcRenderer.invoke('workspace:session:messages'),
+  openProjectWindow: (projectId) => ipcRenderer.invoke('workspace:open-window', projectId),
+  getHudSnapshot: () => ipcRenderer.invoke('hud:snapshot'),
+  listSkills: () => ipcRenderer.invoke('skills:list'),
+  toggleSkill: (skillId, enabled) => ipcRenderer.invoke('skills:toggle', skillId, enabled),
+  importSkill: () => ipcRenderer.invoke('skills:import'),
+  listMcps: () => ipcRenderer.invoke('mcp:list'),
+  toggleMcp: (mcpId, enabled) => ipcRenderer.invoke('mcp:toggle', mcpId, enabled),
+  addMcp: (details) => ipcRenderer.invoke('mcp:add', details),
+  removeMcp: (mcpId) => ipcRenderer.invoke('mcp:remove', mcpId),
 });

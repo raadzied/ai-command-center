@@ -2,6 +2,10 @@
 
 export type CoreStatus = 'THINKING' | 'LISTENING' | 'IDLE' | 'HALTED';
 
+export type RunPhase =
+  | 'IDLE' | 'PLANNING' | 'THINKING' | 'AWAITING_APPROVAL' | 'APPLYING_CHANGES'
+  | 'VALIDATING' | 'DONE' | 'CANCELLED' | 'ERROR';
+
 export type ResourceType = 'memory' | 'context' | 'mcp' | 'fs' | 'voice' | 'telemetry';
 
 export interface AgentNode {

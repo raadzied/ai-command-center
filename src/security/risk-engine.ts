@@ -85,6 +85,9 @@ function classify(
 
     case 'git_operation':
       return { risk: 'review', explanation: 'عملية git — تحتاج موافقة' };
+
+    case 'mcp_tool':
+      return { risk: 'review', explanation: 'استدعاء أداة MCP خارجية — يحتاج موافقة' };
   }
 }
 

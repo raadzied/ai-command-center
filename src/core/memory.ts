@@ -2,11 +2,15 @@ import type Database from 'better-sqlite3';
 import type { Context, RunScope } from '../types.js';
 import { getDb } from '../memory/db.js';
 import { embed } from '../llm/classifier.cloud.js';
+import { loadActiveInstructionSkills } from './skills-manager.js';
 import { retrieveUnified } from '../memory/retrieve.js';
 import type { ConversationQueryOptions } from '../memory/retrieve.js';
 import { getRecentSessionMessages } from '../memory/sessions.js';
 import { saveConversation } from '../memory/store.js';
 import { logger as log } from '../llm/logger.js';
+import { formatProjectBrief, getProjectBrief } from './project-brief.js';
+import { listConnectedMcpToolsForWindow } from '../tools/mcp-manager.js';
+import type { ConnectedMcpTool } from '../tools/mcp-manager.js';
 
 // كم عنصرًا نسترجع من الذاكرة قبل كل مهمة
 const MEMORY_LIMIT = 5;
@@ -23,7 +27,7 @@ const RECENT_MESSAGES_LIMIT = 10;
 // - محتوى غير ذي صلة: 0.561 – 0.614
 // - الفاصل الفارغ: 0.25 – 0.505
 // القيمة 0.40 داخل الفاصل بهامش ±0.15 على الجهتين.
-// ⚠️ L2 على متجهات غير مُطبَّعة = عتبة هشة.
+// [NOTE] L2 على متجهات غير مُطبَّعة = عتبة هشة.
 // عند تغيير نموذج embed أو زيادة الذاكرة، أعد المعايرة.
 // الحل الجذري (V4): cosine عبر تطبيع المتجهات.
 const MAX_DISTANCE = 0.40;
@@ -67,6 +71,16 @@ function getDbOrNull(): Database.Database | null {
   }
 }
 
+function formatMcpToolsText(tools: ReadonlyArray<ConnectedMcpTool>): string {
+  const lines = [
+    '# Connected MCP Tools',
+    'استدعِ أداة بصيغة: [[MCP_CALL:<mcpId>:<toolName>|{"key":"value"}]]',
+    '',
+  ];
+  for (const tool of tools) lines.push(`- ${tool.mcpId}:${tool.toolName} — ${tool.description}`);
+  return lines.join('\n').slice(0, 1500);
+}
+
 // يبني Context من الذاكرة بناءً على نص المستخدم والنطاق.
 // إن فشل أي جزء، يكمل بالمتاح بدل أن يكسر الحلقة.
 export async function buildMemoryContext(
@@ -74,11 +88,34 @@ export async function buildMemoryContext(
   scope?: RunScope,
 ): Promise<Context> {
   const db = getDbOrNull();
-  if (db === null) return { memories: [] };
-
   const context: Context = { memories: [] };
+  if (scope !== undefined) context.scope = scope;
   if (scope?.kind === 'workspace' && scope.projectId !== null) {
     context.projectId = scope.projectId;
+  }
+  if (scope?.kind === 'workspace' && scope.workspaceRoot.trim() !== '') {
+    try {
+      context.projectBriefText = formatProjectBrief(await getProjectBrief(scope.workspaceRoot));
+    } catch (err) {
+      log.warn('Project brief unavailable, proceeding without it', { err });
+    }
+  }
+  if (scope?.windowId !== null && scope?.windowId !== undefined) {
+    try {
+      const tools = listConnectedMcpToolsForWindow(scope.windowId);
+      if (tools.length > 0) context.mcpToolsText = formatMcpToolsText(tools);
+    } catch (err) {
+      log.warn('MCP tool notice unavailable', { err });
+    }
+  }
+  if (db === null) return context;
+
+  // المهارات التعليماتية منفصلة تمامًا عن استرجاع الذاكرة المتجهي.
+  try {
+    const skills = loadActiveInstructionSkills(db, scope);
+    if (skills.length > 0) context.instructionSkills = skills;
+  } catch (err) {
+    log.warn('Instruction skills load failed', { err });
   }
 
   // رسائل الجلسة تُحمَّل أولًا حتى لا تُفقد عند فشل embedding

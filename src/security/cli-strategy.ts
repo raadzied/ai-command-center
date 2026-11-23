@@ -10,7 +10,7 @@ export const cliStrategy: ApprovalStrategy = {
     _auditId: string,
   ): Promise<ApprovalDecision> {
     console.log('');
-    console.log('⚠️  عملية تحتاج موافقتك:');
+    console.log('[WARN]  عملية تحتاج موافقتك:');
     console.log(`   النوع: ${action.type}`);
     console.log(`   الهدف: ${action.target}`);
     console.log(`   السبب: ${action.reason}`);

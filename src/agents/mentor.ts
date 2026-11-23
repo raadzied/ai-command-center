@@ -1,5 +1,5 @@
 import type { AgentName, Task, Context } from '../types.js';
-import type { Agent, AgentOutput } from './base.js';
+import type { Agent, AgentExecutionOptions, AgentOutput } from './base.js';
 import { buildContextText } from './base.js';
 import { chat } from '../llm/chat.js';
 import { logger as log } from '../llm/logger.js';
@@ -27,7 +27,7 @@ export const mentorAgent: Agent = {
   name: 'mentor' as AgentName,
   systemPrompt: MENTOR_SYSTEM,
 
-  async execute(task: Task, context: Context): Promise<AgentOutput> {
+  async execute(task: Task, context: Context, options?: AgentExecutionOptions): Promise<AgentOutput> {
     // 1) ابنِ السياق من الذاكرة
     const contextText = buildContextText(context);
 
@@ -41,6 +41,7 @@ export const mentorAgent: Agent = {
     const response = await chat(MENTOR_SYSTEM, userMessage, {
       temperature: 0.7,
       maxTokens: 2500,
+      ...(options?.signal ? { signal: options.signal } : {}),
     });
 
     // 4) أعد المخرج

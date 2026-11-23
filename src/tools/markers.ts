@@ -1,23 +1,13 @@
 import type { ExecutionResult } from './executor.js';
-import { writeProjectFile } from './filesystem.js';
+import type { RunScope } from '../types.js';
+import { DAILY_DISABLED, writeProjectFile } from './filesystem.js';
+import { processMkdirMarkers } from './fs-mkdir.js';
 import { logger as log } from '../llm/logger.js';
+import { RunCancelledError, throwIfAborted } from '../core/run-control.js';
+import type { RunPhaseListener } from '../core/run-control.js';
 
 // الحد الأقصى لعدد markers في رد واحد
 const MAX_MARKERS = 5;
-
-const ALLOWED_PREFIXES = ['src/', 'scripts/'];
-const ALLOWED_ROOT_FILES = ['package.json', 'tsconfig.json', 'README.md',
-  'AGENTS.md', 'ARCHITECTURE.md', '.gitignore',
-];
-
-function isAllowedPath(rawPath: string): boolean {
-  const normalized = rawPath.replace(/\\/g, '/');
-  return (
-    ALLOWED_PREFIXES.some((p) => normalized.startsWith(p)) ||
-    ALLOWED_ROOT_FILES.includes(normalized) ||
-    normalized.startsWith('data/')
-  );
-}
 
 // نمط marker الكتابة
 const WRITE_PATTERN =
@@ -76,19 +66,39 @@ function stripWriteMarkers(text: string): string {
   return text.replace(WRITE_PATTERN, '').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-// ينفذ كل أوامر الكتابة
+// ينفذ كل أوامر الكتابة (scope؟ اختياري — CLI بلا scope يعمل كما كان)
 export async function processMarkers(
   text: string,
+  scope?: RunScope,
+  signal?: AbortSignal,
+  onPhase?: RunPhaseListener,
 ): Promise<MarkerResult> {
-  const instructions = extractWriteInstructions(text);
+  throwIfAborted(signal);
+  // المجلدات أولاً — ثم الكتابة داخلها.
+  const dirs = await processMkdirMarkers(text, scope, signal);
+  const source = dirs.cleanedContent;
+  const instructions = extractWriteInstructions(source);
 
   if (instructions.length === 0) {
     return {
-      cleanedContent: text,
-      writeStatus: '',
+      cleanedContent: source,
+      writeStatus: dirs.statusText,
       wroteCount: 0,
-      rejectedCount: 0,
+      rejectedCount: dirs.rejectedCount,
       totalMarkers: 0,
+      wrotePaths: [],
+    };
+  }
+
+  // الوضع اليومي: منع أي كتابة على القرص وإرجاع رسالة واضحة للمستخدم
+  if (scope?.kind === 'daily') {
+    log.warn('Markers blocked in daily mode', { count: instructions.length });
+    return {
+      cleanedContent: stripWriteMarkers(source),
+      writeStatus: `${dirs.statusText}\n\n[BLOCKED] ${DAILY_DISABLED} لم يُحفظ أي ملف.`,
+      wroteCount: 0,
+      rejectedCount: instructions.length + dirs.rejectedCount,
+      totalMarkers: instructions.length,
       wrotePaths: [],
     };
   }
@@ -96,10 +106,10 @@ export async function processMarkers(
   if (instructions.length > MAX_MARKERS) {
     log.warn('Too many markers', { count: instructions.length });
     return {
-      cleanedContent: stripWriteMarkers(text),
-      writeStatus: `\n\n❌ عدد markers تجاوز الحد (${instructions.length} > ${MAX_MARKERS}). لم يُحفظ أي ملف.`,
+      cleanedContent: stripWriteMarkers(source),
+      writeStatus: `${dirs.statusText}\n\n[FAIL] عدد markers تجاوز الحد (${instructions.length} > ${MAX_MARKERS}). لم يُحفظ أي ملف.`,
       wroteCount: 0,
-      rejectedCount: instructions.length,
+      rejectedCount: instructions.length + dirs.rejectedCount,
       totalMarkers: instructions.length,
       wrotePaths: [],
     };
@@ -108,50 +118,46 @@ export async function processMarkers(
   log.info('Processing markers', { count: instructions.length });
 
   let wroteCount = 0;
-  let rejectedCount = 0;
+  let rejectedCount = dirs.rejectedCount;
   const wrotePaths: string[] = [];
   const statusLines: string[] = [];
 
   for (const instruction of instructions) {
+    throwIfAborted(signal);
     log.info('Marker detected', { path: instruction.path });
 
-    if (!isAllowedPath(instruction.path)) {
-      log.warn('Marker rejected — path not allowed', {
-        path: instruction.path,
-      });
-      statusLines.push(`❌ ${instruction.path}: مسار غير مسموح`);
-      rejectedCount++;
-      continue;
-    }
-
+    // لا قائمة مسموحات صلبة — الحدود الحقيقية:
+    // assertInsideProject + risk-engine + بوابة الموافقة
     let result: ExecutionResult<void>;
     try {
-      result = await writeProjectFile(instruction.path, instruction.content);
+      result = await writeProjectFile(instruction.path, instruction.content, scope, signal, onPhase);
     } catch (err) {
+      if (err instanceof RunCancelledError) throw err;
       const message = err instanceof Error ? err.message : String(err);
       log.warn('Marker execution threw', {
         message,
         path: instruction.path,
       });
-      statusLines.push(`❌ ${instruction.path}: ${message}`);
+      statusLines.push(`[REJECT] ${instruction.path}: ${message}`);
       rejectedCount++;
       continue;
     }
 
     if (result.executed) {
-      statusLines.push(`✅ ${instruction.path}`);
+      statusLines.push(`[OK] ${instruction.path}`);
       wroteCount++;
       wrotePaths.push(instruction.path);
     } else {
       statusLines.push(
-        `❌ ${instruction.path}: ${result.error ?? 'مرفوض'}`,
+        `[REJECT] ${instruction.path}: ${result.error ?? 'مرفوض'}`,
       );
       rejectedCount++;
     }
   }
 
-  const cleaned = stripWriteMarkers(text);
-  const summary = `\n\n📁 نتائج الكتابة (${wroteCount}/${instructions.length}):\n${statusLines.join('\n')}`;
+  const cleaned = stripWriteMarkers(source);
+  const summary =
+    `${dirs.statusText}\n\n[FILES] نتائج الكتابة (${wroteCount}/${instructions.length}):\n${statusLines.join('\n')}`;
 
   return {
     cleanedContent: cleaned,

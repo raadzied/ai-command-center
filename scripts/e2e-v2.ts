@@ -96,7 +96,7 @@ async function runCase(tc: TestCase): Promise<CaseResult> {
     elapsedMs: elapsed,
     contentPreview: result.content.slice(0, 300),
     contentLength: result.content.length,
-    hasUnverified: result.content.includes('⚠️ [بعض الردود'),
+    hasUnverified: result.content.includes('[WARN] [بعض الردود'),
     hasMultiTaskHeaders: hasMultiTaskHeaders(result.content),
     isApiFailure:
       result.content.includes('Gemini chat failed') ||

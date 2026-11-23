@@ -62,7 +62,7 @@
           BOOT
         </button>
         <button id="btn-project" class="chip" type="button" title="Switch project or daily mode">
-          <span class="chip-icon">📁</span>
+          <span class="chip-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>
           <span id="project-label" class="chip-label" dir="auto">DAILY MODE</span>
         </button>
         <span id="active-agents-count" class="chip chip-agents">AGENTS: 4/6 ACTIVE</span>
@@ -182,7 +182,7 @@
     </div>
     <div class="popover-body">
       <div id="daily-option" class="popover-option daily-option" role="button" tabindex="0" aria-label="Daily mode">
-        <span class="option-icon">🌐</span>
+        <span class="option-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
         <span class="option-label">Daily</span>
       </div>
       <div id="project-divider" class="popover-divider">─</div>
@@ -193,10 +193,22 @@
     </div>
   </div>
 
-  <!-- 7. SESSION STRIP — outside #hud-root, floats above the command dock -->
+  <!-- 7. SESSION STRIP — collapsed toggle by default, card animates upward -->
   <div id="session-strip" class="session-strip" role="region" aria-label="Active sessions">
-    <span class="session-strip-label">Sessions</span>
-    <div id="session-items" class="session-items"></div>
+    <div id="session-panel" class="session-panel">
+      <div class="session-panel-head">
+        <span class="session-strip-label">Sessions</span>
+        <button type="button" id="session-collapse" class="session-collapse" aria-label="Collapse sessions">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="session-items" class="session-items"></div>
+    </div>
+    <button type="button" id="session-toggle" class="session-toggle" aria-expanded="false" aria-controls="session-panel">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <span class="session-toggle-label">SESSIONS</span>
+      <span id="session-count" class="session-count">0</span>
+    </button>
   </div>
 
   <script type="module" src="./src/hud/main.ts"></script>

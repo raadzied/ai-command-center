@@ -26,7 +26,7 @@ function main(): void {
   const parent = getParentName();
   if (parent === 'cmd' || parent === 'cmd.exe') {
     console.error(
-      '⚠️  RESTRICTED SHELL DETECTED: parent process is cmd.exe.',
+      '[FAIL] RESTRICTED SHELL DETECTED: parent process is cmd.exe.',
     );
     console.error(
       '   File writes will fail with ENOENT/SQLITE_IOERR in this shell.',

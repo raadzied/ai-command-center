@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { initDb, closeDb } from '../src/memory/db.js';
+import type { RunScope } from '../src/types.js';
 import {
+  DAILY_DISABLED,
   readProjectFile,
   writeProjectFile,
 } from '../src/tools/filesystem.js';
@@ -19,7 +21,7 @@ async function main(): Promise<void> {
   initDb(join(DB_DIR, 'test.db'));
   console.log('=== Filesystem Security Test ===\n');
   let passed = 0;
-  const total = 4;
+  const total = 7;
 
   try {
     await mkdir(TMP_DIR, { recursive: true });
@@ -60,6 +62,52 @@ async function main(): Promise<void> {
     assert.match(viaLink.error ?? '', /Symlink escape|outside project/i);
     console.log('✓ symlink escape يُرفض');
     passed++;
+
+    // 5) الوضع اليومي: قراءة وكتابة مرفوضتان برسالة واضحة (قبل أي موافقة)
+    const dailyScope: RunScope = { kind: 'daily', windowId: null, sessionId: null };
+    const isDailyErr = (err: unknown): boolean =>
+      err instanceof Error && err.message.includes(DAILY_DISABLED);
+    await assert.rejects(
+      () => readProjectFile('anything.txt', dailyScope),
+      isDailyErr,
+    );
+    await assert.rejects(
+      () => writeProjectFile('anything.txt', 'x', dailyScope),
+      isDailyErr,
+    );
+    console.log('✓ daily: القراءة والكتابة مرفوضتان برسالة واضحة');
+    passed++;
+
+    // 6) المشروع A لا يستطيع القراءة أو الكتابة في مسار داخل المشروع B
+    const rootA = mkdtempSync(join(tmpdir(), 'ai-cc-projA-'));
+    const rootB = mkdtempSync(join(tmpdir(), 'ai-cc-projB-'));
+    try {
+      const scopeA: RunScope = {
+        kind: 'workspace', windowId: null, projectId: 1, sessionId: null,
+        workspaceRoot: rootA,
+      };
+      const bName = basename(rootB);
+      await assert.rejects(
+        () => writeProjectFile(`../${bName}/evil.txt`, 'x', scopeA),
+        /outside project/i,
+      );
+      const readB = await readProjectFile(`../${bName}/secret.txt`, scopeA);
+      assert.equal(readB.executed, false);
+      assert.match(readB.error ?? '', /outside project/i);
+      console.log('✓ A لا يقرأ/يكتب داخل B');
+      passed++;
+
+      // 7) مجلد مشروع باسم ..config/ مسموح داخل المشروع (لا رفض زائف)
+      await writeProjectFile('..config/settings.json', '{"on":true}', scopeA);
+      const cfg = await readProjectFile('..config/settings.json', scopeA);
+      assert.equal(cfg.executed, true);
+      assert.equal(cfg.result, '{"on":true}');
+      console.log('✓ ..config/settings.json مسموح داخل المشروع');
+      passed++;
+    } finally {
+      await rm(rootA, { recursive: true, force: true });
+      await rm(rootB, { recursive: true, force: true });
+    }
   } finally {
     await rm(TMP_DIR, { recursive: true, force: true });
     await rm(OUTSIDE_FILE, { force: true });

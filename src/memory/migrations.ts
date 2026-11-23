@@ -1,14 +1,15 @@
 import type Database from 'better-sqlite3';
 import { existsSync } from 'node:fs';
 import { logger as log } from '../llm/logger.js';
+import { migrateV2 } from './migration-v2.js';
 
 /**
  * ترحيلات قاعدة البيانات — إضافية فقط (ALTER/CREATE)، كل إصدار داخل معاملة واحدة.
- * ⚠️ لا تُضاف أي `ALTER TABLE` إلى schema.sql: يُنفَّذ عند كل فتح لقاعدة البيانات.
+ * [NOTE] لا تُضاف أي `ALTER TABLE` إلى schema.sql: يُنفَّذ عند كل فتح لقاعدة البيانات.
  */
 
 /** أعلى إصدار ترحيل يعرفه هذا الإصدار من الكود. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 interface Migration {
   readonly version: number;
@@ -22,6 +23,7 @@ interface ColumnRow {
 
 const MIGRATIONS: readonly Migration[] = [
   { version: 1, name: 'workspace-projects-and-sessions', up: migrateV1 },
+  { version: 2, name: 'skills-manager-and-mcp-hub', up: migrateV2 },
 ];
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;

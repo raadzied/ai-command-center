@@ -1,5 +1,5 @@
 import type { AgentName, Task, Context } from '../types.js';
-import type { Agent, AgentOutput } from './base.js';
+import type { Agent, AgentExecutionOptions, AgentOutput } from './base.js';
 import { buildContextText } from './base.js';
 import { chat } from '../llm/chat.js';
 import { logger as log } from '../llm/logger.js';
@@ -21,7 +21,7 @@ export const designerAgent: Agent = {
   name: 'designer' as AgentName,
   systemPrompt: DESIGNER_SYSTEM,
 
-  async execute(task: Task, context: Context): Promise<AgentOutput> {
+  async execute(task: Task, context: Context, options?: AgentExecutionOptions): Promise<AgentOutput> {
     const contextText = buildContextText(context);
 
     const userMessage = contextText
@@ -33,6 +33,7 @@ export const designerAgent: Agent = {
     const response = await chat(DESIGNER_SYSTEM, userMessage, {
       temperature: 0.6,
       maxTokens: 3000,
+      ...(options?.signal ? { signal: options.signal } : {}),
     });
 
     return {

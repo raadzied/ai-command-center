@@ -31,6 +31,7 @@ const CHECKS: Record<AgentName, string[]> = {
     'إن كانت المعلومات مفقودة (لا mapping، لا مصدر بيانات)، هل اعترف الكود بذلك بدل افتراض بيانات غير موجودة؟',
     'هل عالج حالات الحد (فارغ، null، undefined)؟',
     'هل أضاف اختبارًا أو مثال استخدام؟',
+    'إن استخدم وسوم [[MKDIR:...]] أو [[WRITE_FILE:...]] أو [[MCP_CALL:...]]، فهي تنفيذ فعلي وليست نقصًا في الرد.',
   ],
   designer: [
     'هل وصف نظام تصميم كامل (ألوان، خطوط، مسافات)؟',
@@ -58,7 +59,13 @@ const SYSTEM_PROMPT = `أنت مراجع جودة صارم.
 تحويل رقم إلى اسم مستخدم بلا mapping أو مصدر بيانات)، فلا
 تعتبره PASS لمجرد أن الكود valid TypeScript. هذا requirement
 غير قابل للتحقيق، ويستحق score منخفض. الكود يجب أن يعترف
-بالقيود بدل افتراض مصادر غير موجودة.`;
+بالقيود بدل افتراض مصادر غير موجودة.
+
+قاعدة الوسوم التنفيذية:
+[[MKDIR:...]] و[[WRITE_FILE:...]] و[[MCP_CALL:...]] أفعال تنفيذية
+صحيحة وكافية بحد ذاتها عند طلب إنشاء مجلدات أو ملفات أو استدعاء أدوات.
+لا تعتبر الرد ناقصًا أو فاشلًا (0.00) لمجرد احتوائه على هذه الوسوم
+دون كود برمجي طويل، ما دامت الوسوم تحقق المطلوب.`;
 
 const ReviewSchema = z.object({
   score: z.coerce.number().min(0).max(1),
@@ -70,9 +77,7 @@ const ReviewSchema = z.object({
 });
 
 // يقيّم مخرج وكيل
-export async function evaluateQuality(
-  input: QualityInput,
-): Promise<QualityResult> {
+export async function evaluateQuality(input: QualityInput, signal?: AbortSignal): Promise<QualityResult> {
   try {
     if (input.failureReason) {
       log.warn('Review reason', {
@@ -82,7 +87,7 @@ export async function evaluateQuality(
     }
 
     // A2: رد مقطوع = فشل تلقائي، لا يُقبل بـ PASS
-    if (input.output.includes('⚠️ [الرد مقطوع')) {
+    if (input.output.includes('[WARN] [الرد مقطوع')) {
       log.warn('Quality gate: truncated output detected', {
         agent: input.agent,
       });
@@ -100,6 +105,7 @@ export async function evaluateQuality(
     const raw = await chatGroq(SYSTEM_PROMPT, userMsg, {
       temperature: 0.1,
       maxTokens: 500,
+      ...(signal ? { signal } : {}),
     });
 
     const json = extractJson(raw);
@@ -136,6 +142,7 @@ export async function evaluateQuality(
       summary: parsed.data.summary,
     };
   } catch (err) {
+    if (signal?.aborted) throw err;
     log.warn('Quality gate exception', {
       message: err instanceof Error ? err.message : String(err),
     });

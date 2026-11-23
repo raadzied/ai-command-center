@@ -65,16 +65,21 @@ const DECOMPOSER_SYSTEM = `أنت محلل مهام دقيق.
 
 8) لا تتجاوز 5 مهام.
 
+9) إنشاء مجلد أو ملف، أو تعديل كود داخل المشروع = build دائمًا → coder
+   (وليس learn/mentor)، حتى لو صيغ الطلب كوصف أو شرح.
+   مثال: "أنشئ مجلد src/components وضع داخله ملف index.ts" → build واحد.
+
 أعد JSON فقط:
 {"tasks":[{"id":"t1","description":"...","intent":"learn|build|design","dependsOn":[]}]}`;
 
 // يفكك طلب المستخدم إلى مهام. إن فشل، يعيد [] (fallback آمِن).
-export async function decompose(userInput: string): Promise<DecomposedTask[]> {
+export async function decompose(userInput: string, signal?: AbortSignal): Promise<DecomposedTask[]> {
   try {
     const raw = await chatGroq(DECOMPOSER_SYSTEM, userInput, {
       temperature: 0,
       maxTokens: 800,
       preferredModel: 'openai/gpt-oss-120b',
+      ...(signal ? { signal } : {}),
     });
 
     const json = extractJson(raw);
@@ -101,7 +106,12 @@ export async function decompose(userInput: string): Promise<DecomposedTask[]> {
         DECOMPOSER_SYSTEM +
           '\n\nتحذير: الطلب يحتوي علامة تقسيم واضحة، فيجب أن تعيد مهمتين على الأقل.',
         userInput,
-        { temperature: 0, maxTokens: 800, preferredModel: 'openai/gpt-oss-120b' },
+        {
+          temperature: 0,
+          maxTokens: 800,
+          preferredModel: 'openai/gpt-oss-120b',
+          ...(signal ? { signal } : {}),
+        },
       );
       const retryJson = extractJson(retryRaw);
       if (retryJson) {
@@ -119,6 +129,7 @@ export async function decompose(userInput: string): Promise<DecomposedTask[]> {
     });
     return parsed.data.tasks;
   } catch (err) {
+    if (signal?.aborted) throw err;
     log.warn('Decomposer failed', { err });
     return [];
   }
