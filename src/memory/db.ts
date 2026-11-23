@@ -4,6 +4,7 @@ import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { logger as log } from '../llm/logger.js';
+import { migrate } from './migrations.js';
 
 // مسار الملف الحالي (يدعم كلا من ESM و CJS)
 const __filename = fileURLToPath(import.meta.url);
@@ -27,15 +28,28 @@ export function openDb(path: string = DEFAULT_DB_PATH): Database.Database {
   const db = new Database(path);
 
   // إعدادات الاتصال
+  db.pragma('busy_timeout = 5000');
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
   // تحميل sqlite-vec
   sqliteVec.load(db);
 
-  // تطبيق schema (قراءة مرّة واحدة فقط)
-  const schema = readFileSync(SCHEMA_PATH, 'utf-8');
-  db.exec(schema);
+  try {
+    // تطبيق schema (CREATE IF NOT EXISTS فقط — آمن للتكرار)
+    const schema = readFileSync(SCHEMA_PATH, 'utf-8');
+    db.exec(schema);
+
+    // ترحيلات إضافية (ALTER TABLE) — لا تُوضع في schema.sql
+    migrate(db, path);
+  } catch (err) {
+    db.close();
+    log.error('DB initialization failed', {
+      path,
+      message: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 
   log.info('DB opened', { path });
   return db;

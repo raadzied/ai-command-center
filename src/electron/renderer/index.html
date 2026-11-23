@@ -61,11 +61,15 @@
         <button id="btn-boot-sound" class="chip chip-boot" type="button" title="Play core power-up sequence">
           BOOT
         </button>
+        <button id="btn-project" class="chip" type="button" title="Switch project or daily mode">
+          <span class="chip-icon">📁</span>
+          <span id="project-label" class="chip-label" dir="auto">DAILY MODE</span>
+        </button>
         <span id="active-agents-count" class="chip chip-agents">AGENTS: 4/6 ACTIVE</span>
       </div>
     </header>
 
-    <main class="hud-main">
+    <main class="hud-main hud-stage">
       <section id="left-wing" class="wing wing-left" aria-label="Agent nodes"></section>
 
       <div
@@ -79,8 +83,7 @@
       <section id="right-wing" class="wing wing-right" aria-label="Resource nodes"></section>
     </main>
 
-    <footer class="hud-dock">
-      <div class="command-dock">
+    <footer class="hud-dock command-dock">
         <button id="btn-terminal" class="dock-btn" type="button" title="Open live execution log">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="4 17 10 11 4 5"></polyline>
@@ -139,7 +142,6 @@
         </button>
 
         <button id="btn-kill" class="btn-kill" type="button">KILL ALL</button>
-      </div>
     </footer>
   </div>
 
@@ -171,6 +173,31 @@
 
   <!-- 5. SUBTLE HUD TOAST NOTIFICATION -->
   <div id="hud-toast" class="hud-toast" role="status" aria-live="polite"></div>
+
+  <!-- 6. PROJECT POPOVER — outside #hud-root (fixed positioning, hidden by default) -->
+  <div id="project-popover" class="popover" role="dialog" aria-label="Project selector" hidden>
+    <div class="popover-head">
+      <span class="popover-title">APEX Project</span>
+      <button id="btn-close-popover" class="popover-close" aria-label="Close project selector">×</button>
+    </div>
+    <div class="popover-body">
+      <div id="daily-option" class="popover-option daily-option" role="button" tabindex="0" aria-label="Daily mode">
+        <span class="option-icon">🌐</span>
+        <span class="option-label">Daily</span>
+      </div>
+      <div id="project-divider" class="popover-divider">─</div>
+      <div id="project-list" class="popover-project-list"></div>
+    </div>
+    <div class="popover-foot">
+      <button id="btn-new-session" class="btn-small">+ Session</button>
+    </div>
+  </div>
+
+  <!-- 7. SESSION STRIP — outside #hud-root, floats above the command dock -->
+  <div id="session-strip" class="session-strip" role="region" aria-label="Active sessions">
+    <span class="session-strip-label">Sessions</span>
+    <div id="session-items" class="session-items"></div>
+  </div>
 
   <script type="module" src="./src/hud/main.ts"></script>
 </body>

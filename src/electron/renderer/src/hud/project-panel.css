@@ -1,0 +1,110 @@
+/* Project panel styles — fixed-position popover + session strip.
+   These two elements live outside #hud-root so they never affect the
+   .hud flex-column layout or the wing coordinates. */
+
+/* ------------------------------------------------------------------ popover */
+#project-popover {
+  display: none;
+  position: fixed;
+  top: 76px;
+  right: 32px;
+  width: 320px;
+  z-index: 60;
+  padding: 8px 10px;
+  background: rgba(20, 25, 35, 0.95);
+  border: 1px solid var(--border-color, #3a4250);
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  font-size: 13px;
+  color: #e0e7ff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+/* Shown by the is-open class, or by removing the [hidden] attribute
+   (the renderer bridge toggles .hidden). */
+#project-popover.is-open,
+#project-popover:not([hidden]) {
+  display: block;
+}
+#project-popover .popover-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin: -8px -10px 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color, #3a4250);
+}
+#project-popover .popover-title { font-weight: 600; margin: 0; }
+#project-popover .popover-close {
+  background: none; border: none; color: #6b7280;
+  cursor: pointer; padding: 0; font-size: 14px;
+}
+#project-popover .popover-body {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 240px; overflow-y: auto;
+}
+#project-popover .popover-option {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: rgba(30, 40, 55, 0.6); color: #d0d8ef;
+  cursor: pointer; text-align: left; font-size: 12px;
+}
+#project-popover .popover-option:hover { background: rgba(80, 120, 170, 0.25); }
+#project-popover .popover-option.is-active {
+  border-color: #38bdf8; background: rgba(56, 189, 248, 0.16);
+}
+#project-popover .popover-divider { text-align: center; color: #4b5563; font-size: 10px; }
+#project-popover .option-icon { flex-shrink: 0; width: 16px; text-align: center; }
+#project-popover .option-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#project-popover .popover-foot {
+  margin-top: 6px; padding-top: 6px; display: flex;
+  justify-content: flex-end; gap: 6px;
+  border-top: 1px solid var(--border-color, #3a4250);
+}
+#project-popover .btn-small { padding: 4px 8px; font-size: 11px; }
+#project-popover [dir="auto"] { direction: auto; unicode-bidi: embed; }
+
+/* ---------------------------------------------------------------- session strip */
+#session-strip {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 96px;
+  max-width: min(760px, 84vw);
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  pointer-events: auto;
+  background: rgba(15, 20, 30, 0.8);
+  border: 1px solid var(--border-color, #3a4250);
+  border-radius: 6px;
+  font-size: 11px;
+  color: #a0a8c0;
+  backdrop-filter: blur(10px);
+}
+#session-strip .session-strip-label {
+  font-weight: 500; color: #7f8c8d; flex-shrink: 0;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+#session-strip .session-items { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+#session-strip .session-item {
+  display: flex; align-items: center; padding: 2px 6px;
+  border-radius: 4px; background: rgba(50, 80, 120, 0.3);
+  color: #c0cae9; font-size: 10px; white-space: nowrap;
+  cursor: pointer; border: 1px solid transparent;
+}
+#session-strip .session-item:hover { background: rgba(80, 120, 170, 0.35); }
+#session-strip .session-item.is-active,
+#session-strip .session-item.active {
+  background: rgba(100, 150, 200, 0.4); color: #d0d8f0;
+}
+#session-strip .session-add,
+#session-strip .session-log {
+  border: 1px solid var(--border-color, #3a4250);
+}
+#session-strip .session-log {
+  color: #f59e0b; font-weight: 600; letter-spacing: 0.5px;
+}
+#session-strip [dir="auto"] { direction: auto; unicode-bidi: embed; }
+
+/* ------------------------------------------------------- project chip label */
+#btn-project .chip-label.is-daily { color: #f59e0b; font-weight: 600; }
+#btn-project .chip-label:not(.is-daily) { color: #38bdf8; font-weight: 600; }

@@ -25,4 +25,13 @@ contextBridge.exposeInMainWorld('api', {
   setAssistantMode: (mode) => ipcRenderer.invoke('assistant:settings:mode', mode),
   setPermission: (permission, enabled) =>
     ipcRenderer.invoke('assistant:settings:permission', { permission, enabled }),
+
+  // workspace bridge functions
+  getWorkspaceContext: () => ipcRenderer.invoke('workspace:context'),
+  pickFolder: () => ipcRenderer.invoke('workspace:pick-folder'),
+  switchProject: (projectId, sessionId) => ipcRenderer.invoke('workspace:switch-project', projectId, sessionId),
+  createSession: () => ipcRenderer.invoke('workspace:session:create'),
+  selectSession: (sessionId) => ipcRenderer.invoke('workspace:session:select', sessionId),
+  renameSession: (newName) => ipcRenderer.invoke('workspace:session:rename', newName),
+  sessionMessages: () => ipcRenderer.invoke('workspace:session:messages'),
 });

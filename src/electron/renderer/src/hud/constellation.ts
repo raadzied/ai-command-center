@@ -1,4 +1,5 @@
 import type { ApexHudApi } from './types';
+import { figureGeom } from './core/figure';
 
 interface Anchor {
   x: number;
@@ -37,13 +38,10 @@ export function drawConstellationPaths(app: ApexHudApi): void {
 
   const width = window.innerWidth;
   const height = window.innerHeight;
-  const centerX = width * 0.5;
-  const bustHeight = Math.min(height * 0.86, width * 0.62);
-  const bustTopY = height * 0.13;
-  const headHalfW = bustHeight * 0.185;
-  const anchorY = bustTopY + bustHeight * 0.34;
-  const leftAnchor: Anchor = { x: centerX - headHalfW * 1.06, y: anchorY };
-  const rightAnchor: Anchor = { x: centerX + headHalfW * 1.06, y: anchorY };
+  const fg = figureGeom(width, height);
+  const anchorY = fg.top + fg.h * 0.34;
+  const leftAnchor: Anchor = { x: fg.cx - fg.w * 0.185, y: anchorY };
+  const rightAnchor: Anchor = { x: fg.cx + fg.w * 0.185, y: anchorY };
 
   const halted = app.state.coreStatus === 'HALTED';
   const burst = performance.now() < app.state.burstUntil;

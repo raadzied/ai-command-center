@@ -1,13 +1,10 @@
 import { byId } from '../dom';
 import type { CoreController, CoreFrame, CoreStatus } from '../types';
-import { drawBody } from './draw-body';
-import { drawEyes } from './draw-eyes';
-import { createDust, createSandParticles } from './sand';
-import { createRng } from './silhouette';
+import { drawFigureCore } from './figure';
+import { createDust } from './sand';
 import { drawTerrain } from './terrain';
-import { buildVeins } from './veins';
 
-const SAND_COUNT = 1550;
+const DUST_COUNT = 240;
 
 const noop = (): void => {
   /* no canvas available */
@@ -27,14 +24,12 @@ export function startCoreCanvas(
 
   const surface = canvas;
   const ctx = context;
-  const veins = buildVeins(createRng(4219));
-  const sand = createSandParticles(SAND_COUNT);
-  const dust = createDust(240);
+  const dust = createDust(DUST_COUNT);
 
   let width = 0;
   let height = 0;
-  let disperse = 0.85;
-  let target = 0.85;
+  let disperse = 0;
+  let target = 0;
 
   const resize = (): void => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -83,8 +78,7 @@ export function startCoreCanvas(
     ctx.fillRect(0, 0, width, height);
 
     drawTerrain(ctx, width, height, dust, time, speedMult, halted);
-    drawBody(ctx, width, height, veins, sand, coreFrame);
-    drawEyes(ctx, width, height, coreFrame);
+    drawFigureCore(ctx, width, height, coreFrame);
 
     window.requestAnimationFrame(frame);
   };

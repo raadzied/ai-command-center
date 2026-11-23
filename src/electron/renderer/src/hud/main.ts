@@ -5,6 +5,7 @@ import { startCoreCanvas } from './core';
 import type { CoreStatus } from './types';
 import './hud.css';
 import './hud-panels.css';
+import './project-panel.css';
 
 function boot(): void {
   const app = new ApexHud();

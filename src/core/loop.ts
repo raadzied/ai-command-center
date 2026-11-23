@@ -3,23 +3,16 @@ import type { Plan } from './planner.js';
 import { selectAgent } from './router.js';
 import { topologicalSort } from './decomposer.js';
 import { chat } from '../llm/chat.js';
+import type { ChatOptions } from '../llm/chat.js';
 import { logger as log } from '../llm/logger.js';
 import { buildMemoryContext, saveToMemory } from './memory.js';
-import { extractAndSaveSkill } from './skills.js';
-import { evaluateQuality, MAX_RETRIES } from './quality-gate.js';
+import { evaluateQuality } from './quality-gate.js';
 import { processMarkers } from '../tools/markers.js';
-import { validateTscFiles } from '../tools/tsc-validate.js';
 import { enqueueSpeech } from '../voice/state.js';
 import { getAssistantMode } from '../security/settings.js';
-import type {
-  AgentName,
-  Context,
-  QualityInput,
-  QualityResult,
-  Task,
-  TaskSummary,
-} from '../types.js';
-import type { MarkerResult } from '../tools/markers.js';
+import { runTask } from './task-runner.js';
+import type { TaskRunnerDeps } from './task-runner.js';
+import type { AgentName, Context, RunScope, TaskSummary } from '../types.js';
 
 // رد عام للدردشة العادية
 const CHAT_SYSTEM = `أنت مساعد في AI Command Center.
@@ -39,34 +32,24 @@ export interface LoopResult {
 }
 
 // التبعيات القابلة للحقن (للاختبار بلا API)
-export interface LoopDeps {
-  buildMemoryContext: (input: string) => Promise<Context>;
+export interface LoopDeps extends TaskRunnerDeps {
+  buildMemoryContext: (input: string, scope: RunScope) => Promise<Context>;
   createPlan: (input: string, ctx: Context) => Promise<Plan>;
-  selectAgent: (
-    task: Task,
-  ) => {
-    name: AgentName;
-    execute: (t: Task, c: Context) => Promise<{ content: string }>;
-  } | null;
-  evaluateQuality: (input: QualityInput) => Promise<QualityResult>;
-  processMarkers: (text: string) => Promise<MarkerResult>;
   saveToMemory: (
-    user: string,
-    agent: string,
-    name: string | null,
+    user: string, agent: string, name: string | null, scope: RunScope,
   ) => Promise<void>;
-  enqueueSpeech: (text: string, agent: string | null) => void;
-  chat: (
-    system: string,
-    user: string,
-    opts?: { temperature?: number; maxTokens?: number },
-  ) => Promise<string>;
-  onAgentActive?: (agentName: AgentName | null) => void;
+  chat: (system: string, user: string, opts?: ChatOptions) => Promise<string>;
   onTaskStart?: (index: number, total: number) => void;
 }
 
+// نطاق CLI الافتراضي: مساحة عمل بلا مشروع مسجّل
+export const CLI_SCOPE: RunScope = {
+  kind: 'workspace', windowId: null, projectId: null, sessionId: null,
+  workspaceRoot: process.cwd(),
+};
+
 // التبعيات الحقيقية — الافتراضي في الإنتاج
-const defaultDeps: LoopDeps = {
+const BASE_DEPS: LoopDeps = {
   buildMemoryContext,
   createPlan,
   selectAgent,
@@ -75,18 +58,28 @@ const defaultDeps: LoopDeps = {
   saveToMemory,
   enqueueSpeech,
   chat,
-  onAgentActive: () => {},
-  onTaskStart: () => {},
+  onAgentActive: (): void => {},
+  onTaskStart: (): void => {},
 };
+
+/** يبني التبعيات الحقيقية مع ربط دوال الذاكرة بالنطاق المطلوب. */
+export function createDefaultDeps(scope: RunScope): LoopDeps {
+  return {
+    ...BASE_DEPS,
+    buildMemoryContext: (input: string, runScope: RunScope = scope): Promise<Context> =>
+      buildMemoryContext(input, runScope),
+    saveToMemory: (
+      user: string, agent: string, name: string | null, runScope: RunScope = scope,
+    ): Promise<void> => saveToMemory(user, agent, name, runScope),
+  };
+}
 
 function formatPlanOnly(plan: Plan): string {
   if (plan.tasks.length === 0) {
     return 'وضع التخطيط: لم أتمكن من استخراج خطوات قابلة للتنفيذ. لم يتم تنفيذ أي إجراء.';
   }
 
-  const steps = plan.tasks.map(
-    (task, index) => `${index + 1}. [${task.agentName}] ${task.description}`,
-  );
+  const steps = plan.tasks.map((task, index) => `${index + 1}. [${task.agentName}] ${task.description}`);
   return [
     'وضع التخطيط — هذه خطة فقط، ولم يتم تشغيل الوكلاء أو تعديل أي ملف.',
     ...steps,
@@ -94,12 +87,13 @@ function formatPlanOnly(plan: Plan): string {
   ].join('\n');
 }
 
-// يعالج مدخل المستخدم كاملاً (ينفّذ مخطط مهام متعددًا)
-export async function processInput(
+// يعالج مدخل المستخدم ضمن نطاق صريح (مشروع/جلسة أو وضع يومي)
+export async function processInputScoped(
   input: string,
+  scope: RunScope,
   overrides: Partial<LoopDeps> = {},
 ): Promise<LoopResult> {
-  const deps: LoopDeps = { ...defaultDeps, ...overrides };
+  const deps: LoopDeps = { ...createDefaultDeps(scope), ...overrides };
   const start = Date.now();
   const trimmed = input.trim();
 
@@ -107,7 +101,7 @@ export async function processInput(
     return { intent: 'empty', agentUsed: null, content: '', elapsedMs: 0 };
   }
 
-  const context = await deps.buildMemoryContext(trimmed);
+  const context = await deps.buildMemoryContext(trimmed, scope);
   const plan = await deps.createPlan(trimmed, context);
   const mode = getAssistantMode();
 
@@ -123,15 +117,20 @@ export async function processInput(
     return result;
   }
 
-  // دردشة عادية
+  // دردشة عادية — مرّر آخر رسائل الجلسة كسياق متعدد الأدوار
   if (plan.isChat) {
     log.info('Handling as chat');
+    const history = (context.recentMessages ?? []).map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
     const reply = await deps.chat(CHAT_SYSTEM, trimmed, {
       temperature: 0.6,
       maxTokens: 800,
+      ...(history.length > 0 ? { history } : {}),
     });
     if (mode === 'build') {
-      await deps.saveToMemory(trimmed, reply.trim(), null);
+      await deps.saveToMemory(trimmed, reply.trim(), null, scope);
     }
     const result: LoopResult = {
       intent: 'chat',
@@ -161,206 +160,29 @@ export async function processInput(
   const parts: string[] = [];
   const summaries: TaskSummary[] = [];
   let prevOutput = '';
-  let lastAgent: string | null = null;
+  let lastAgent: AgentName | null = null;
   let anyUnverified = false;
 
-  for (let i = 0; i < ordered.length; i++) {
+  for (let i = 0; i < ordered.length; i += 1) {
     const task = ordered[i];
     if (!task) continue;
 
     deps.onTaskStart?.(i + 1, ordered.length);
-    const taskStart = Date.now();
+    const outcome = await runTask(deps, {
+      task,
+      index: i,
+      total: ordered.length,
+      context,
+      prevOutput,
+    });
 
-    try {
-      const agent = deps.selectAgent(task);
-      if (!agent) {
-        throw new Error('لا وكيل مناسب لهذه المهمة');
-      }
-
-      deps.onAgentActive?.(agent.name);
-
-      // مرّر مخرج المهمة السابقة كسياق
-      const enrichedTask =
-        prevOutput.length > 0
-          ? {
-              ...task,
-              description:
-                `${task.description}\n\n` +
-                `# مخرجات المهام السابقة (سياق، ليست طلبًا من المستخدم):\n` +
-                `${prevOutput}\n\n` +
-                `# مهمتك:\n${task.description}`,
-            }
-          : task;
-
-      log.info('Task start', {
-        index: i + 1,
-        of: ordered.length,
-        agent: agent.name,
-      });
-
-      let output = await agent.execute(enrichedTask, context);
-      let attempts = 0;
-      let unverified = false;
-
-      // Quality Gate
-      while (attempts < MAX_RETRIES) {
-        const failureReason = output.content.includes('⚠️ [الرد مقطوع')
-          ? ('MAX_TOKENS' as const)
-          : undefined;
-
-        if (failureReason) {
-          log.warn('Detected truncation', {
-            reason: failureReason,
-            agent: agent.name,
-          });
-        }
-
-        const quality = await deps.evaluateQuality({
-          agent: agent.name,
-          task: enrichedTask.description,
-          output: output.content,
-          ...(failureReason ? { failureReason } : {}),
-        });
-
-        if (quality.status === 'PASS') break;
-
-        if (quality.status === 'FAIL') {
-          attempts++;
-          const issuesText = quality.issues
-            .map((it) => `- ${it.description}`)
-            .join('\n');
-
-          const revisedTask = {
-            ...enrichedTask,
-            description: `${enrichedTask.description}\n\n# ملاحظات المراجع:\n${issuesText}\n\nحسّن ردك.`,
-          };
-          output = await agent.execute(revisedTask, context);
-
-          if (attempts >= MAX_RETRIES) {
-            const attemptsMade = MAX_RETRIES + 1;
-            log.warn('Retries exhausted', {
-              agent: agent.name,
-              attempts: attemptsMade,
-            });
-            // output الحالي يُعرض مع وسم واضح أدناه
-            break;
-          }
-          continue;
-        }
-
-        // REVIEW_ERROR
-        if (task.verificationRequired) {
-          throw new Error('تعذّر التحقق من المخرج (REVIEW_ERROR)');
-        }
-        unverified = true;
-        break;
-      }
-
-      if (unverified) anyUnverified = true;
-      lastAgent = agent.name;
-
-      // وسم المهمة المتعددة
-      const header =
-        ordered.length > 1
-          ? `─── المهمة ${i + 1}: ${task.description.split('\n')[0]} ───\n`
-          : '';
-
-      // عالج markers الكتابة من رد Coder
-      // (prevOutput أدناه يستخدم output.content الخام — حتى تعرف
-      // المهام التالية أن ملفًا كُتب)
-      let displayContent = output.content;
-      if (agent.name === 'coder') {
-        const markerResult = await deps.processMarkers(output.content);
-        displayContent =
-          markerResult.cleanedContent + markerResult.writeStatus;
-        if (markerResult.totalMarkers > 0) {
-          log.info('Markers processed', {
-            total: markerResult.totalMarkers,
-            wrote: markerResult.wroteCount,
-            rejected: markerResult.rejectedCount,
-          });
-        }
-
-        // فحص tsc لكل ملفات .ts المكتوبة.
-        // ملاحظة: tsconfig يفحص src/**/* فقط، فملف خارج src/ قد لا
-        // تُلتقط أخطاؤه — لكن FIX 1 في markers.ts يمنع كتابة .ts خارج
-        // src/ أو scripts/ أصلاً.
-        if (markerResult.wrotePaths.length > 0) {
-          const tsFiles = markerResult.wrotePaths.filter(
-            (p) => p.endsWith('.ts') || p.endsWith('.tsx'),
-          );
-          if (tsFiles.length > 0) {
-            const tscResult = validateTscFiles(tsFiles);
-            if (!tscResult.ok) {
-              const errLines = tscResult.errors
-                .slice(0, 5)
-                .map((e) => `  ${e}`)
-                .join('\n');
-              displayContent +=
-                `\n\n⚠️ الملفات المكتوبة تكسر tsc:\n${errLines}\n` +
-                `   أصلحها قبل البناء.`;
-              log.warn('Generated files break tsc', {
-                count: tscResult.errors.length,
-              });
-            }
-          }
-        }
-      }
-
-      let finalContent = displayContent;
-      if (attempts >= MAX_RETRIES && !unverified) {
-        // آخر تقييم كان FAIL — أضف وسم واضح
-        const warning =
-          `⚠️ [الرد لم يجتز المراجعة بعد ${MAX_RETRIES + 1} محاولات — ` +
-          `قد يكون غير كامل]\n\n`;
-        finalContent = warning + finalContent;
-      }
-      parts.push(header + finalContent);
-
-      // احفظ المخرج الخام كسياق للمهمة التالية (لا يُحفظ في الذاكرة هنا)
-      prevOutput = output.content;
-
-      // نطق جوهر المهمة فوراً
-      deps.enqueueSpeech(finalContent, agent.name);
-
-      // استخرج مهارة إن كان Mentor ولم يكن unverified
-      if (agent.name === 'mentor' && !unverified) {
-        await extractAndSaveSkill(task.description, output.content);
-      }
-
-      // نطق مخرجات الوكيل
-      deps.enqueueSpeech(output.content, agent.name);
-
-      summaries.push({
-        id: task.id,
-        agentName: task.agentName,
-        status: 'done',
-        elapsedMs: Date.now() - taskStart,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.error('Task failed', {
-        taskId: task.id,
-        agent: task.agentName,
-        message: msg,
-      });
-
-      parts.push(
-        `─── المهمة ${i + 1}/${ordered.length}: ${task.description.split('\n')[0]} ───\n` +
-        `❌ فشلت: ${msg}`,
-      );
-      prevOutput = '';
-
-      summaries.push({
-        id: task.id,
-        agentName: task.agentName,
-        status: 'failed',
-        error: msg,
-        elapsedMs: Date.now() - taskStart,
-      });
-        deps.onAgentActive?.(null);
-    }
+    parts.push(outcome.rendered);
+    prevOutput = outcome.rawOutput;
+    if (outcome.unverified) anyUnverified = true;
+    if (outcome.agentUsed !== null) lastAgent = outcome.agentUsed;
+    summaries.push(outcome.summary);
   }
+
   const combined = parts.join('\n\n');
   let content = anyUnverified
     ? `⚠️ [بعض الردود غير مُتحققة — تعذّر تشغيل المراجع]\n\n${combined}`
@@ -382,8 +204,16 @@ export async function processInput(
   if (summaries.length > 1) result.taskSummary = summaries;
 
   // حفظ واحد لكل مدخل: نص المستخدم الأصلي + الرد المُجمَّع النهائي
-  await deps.saveToMemory(trimmed, result.content, lastAgent);
+  await deps.saveToMemory(trimmed, result.content, lastAgent, scope);
 
   deps.onAgentActive?.(null);
   return result;
-  }
+}
+
+// الواجهة القديمة — تُثبّت نطاق CLI للحفاظ على التوافق العكسي
+export async function processInput(
+  input: string,
+  overrides: Partial<LoopDeps> = {},
+): Promise<LoopResult> {
+  return processInputScoped(input, CLI_SCOPE, overrides);
+}

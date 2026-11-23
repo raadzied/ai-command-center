@@ -34,6 +34,52 @@ export interface MemoryStats {
   skills: number;
 }
 
+export interface WorkspaceScope {
+  kind: 'daily' | 'workspace';
+  windowId: number | null;
+  projectId: number | null;
+  sessionId: number | null;
+  workspaceRoot?: string;
+}
+
+export interface WorkspaceContext {
+  ok: boolean;
+  error?: string;
+  scope?: WorkspaceScope;
+  dailyMode?: boolean;
+  projects?: Array<{ id: number; name: string; rootPath: string }>;
+  sessions?: Array<{ id: number; title: string }>;
+  activeSessionId?: number | null;
+}
+
+export interface WorkspaceActionResult {
+  ok: boolean;
+  error?: string;
+}
+
+export interface WorkspacePickResult extends WorkspaceActionResult {
+  projectId?: number;
+  sessionId?: number | null;
+}
+
+export interface WorkspaceSwitchResult extends WorkspaceActionResult {
+  scope?: WorkspaceScope;
+}
+
+export interface WorkspaceCreateResult extends WorkspaceActionResult {
+  sessionId?: number;
+}
+
+export interface SessionMessage {
+  role: string;
+  content: string;
+  agentName: string | null;
+}
+
+export interface WorkspaceMessagesResult extends WorkspaceActionResult {
+  messages?: SessionMessage[];
+}
+
 declare global {
   interface Window {
     api: {
@@ -66,6 +112,13 @@ declare global {
         permission: AssistantPermission,
         enabled: boolean,
       ) => Promise<AssistantSettings>;
+      getWorkspaceContext: () => Promise<WorkspaceContext>;
+      pickFolder: () => Promise<WorkspacePickResult>;
+      switchProject: (projectId: number | null, sessionId: number | null) => Promise<WorkspaceSwitchResult>;
+      createSession: () => Promise<WorkspaceCreateResult>;
+      selectSession: (sessionId: number) => Promise<WorkspaceActionResult>;
+      renameSession: (newName: string) => Promise<WorkspaceActionResult>;
+      sessionMessages: () => Promise<WorkspaceMessagesResult>;
     };
   }
 }

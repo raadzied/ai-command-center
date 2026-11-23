@@ -6,3 +6,8 @@ declare module '*.css' {
   const stylesheet: string;
   export default stylesheet;
 }
+
+declare module '*.webp' {
+  const src: string;
+  export default src;
+}

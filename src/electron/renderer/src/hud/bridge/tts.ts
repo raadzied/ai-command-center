@@ -6,10 +6,11 @@ export interface VoiceAudioPayload {
 export interface TtsPlayer {
   push(payload: VoiceAudioPayload): void;
   stop(): void;
+  isPlaying(): boolean;
 }
 
 /** Sequential playback of agent voice responses streamed from the main process. */
-export function createTtsPlayer(): TtsPlayer {
+export function createTtsPlayer(onIdle?: () => void): TtsPlayer {
   const queue: VoiceAudioPayload[] = [];
   let current: HTMLAudioElement | null = null;
 
@@ -24,8 +25,10 @@ export function createTtsPlayer(): TtsPlayer {
     current = audio;
 
     const advance = (): void => {
+      if (current !== audio) return;
       current = null;
       playNext();
+      if (queue.length === 0 && !current) onIdle?.();
     };
 
     audio.onended = advance;
@@ -44,9 +47,12 @@ export function createTtsPlayer(): TtsPlayer {
     stop: (): void => {
       queue.length = 0;
       if (current) {
+        current.onended = null;
+        current.onerror = null;
         current.pause();
         current = null;
       }
     },
+    isPlaying: (): boolean => current !== null || queue.length > 0,
   };
 }

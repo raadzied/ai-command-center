@@ -1,11 +1,14 @@
 import type Database from 'better-sqlite3';
 import { logger as log } from '../llm/logger.js';
+import { touchSession } from './sessions.js';
 
 export interface ConversationInput {
   role: 'user' | 'agent';
   agentName?: string;
   content: string;
   embedding?: number[];
+  /** جلسة المحادثة؛ غيابها أو `null` = ذاكرة يومية (متوافق مع كل الاستدعاءات القديمة). */
+  sessionId?: number | null;
 }
 
 export interface ProjectInput {
@@ -44,14 +47,15 @@ export function saveConversation(
   i: ConversationInput,
 ): number {
   const tx = db.transaction((d: ConversationInput) => {
-    const ri = db.prepare(`INSERT INTO conversations (role, agent_name, content) VALUES (?,?,?)`).run(d.role, d.agentName ?? null, d.content);
+    const ri = db.prepare(`INSERT INTO conversations (role, agent_name, content, session_id) VALUES (?,?,?,?)`).run(d.role, d.agentName ?? null, d.content, d.sessionId ?? null);
     const id = Number(ri.lastInsertRowid);
+    if (typeof d.sessionId === 'number') touchSession(db, d.sessionId);
     if (d.embedding) { assertEmbedding(d.embedding, 'saveConversation');
       db.prepare(`INSERT INTO conversations_vec (conversation_id, embedding) VALUES (?,?)`).run(BigInt(id), toVecJson(d.embedding)); }
     return id;
   });
   const id = tx(i);
-  log.info('Saved conversation', { id, role: i.role });
+  log.info('Saved conversation', { id, role: i.role, sessionId: i.sessionId ?? null });
   return id;
 }
 

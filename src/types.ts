@@ -42,11 +42,32 @@ export interface Artifact {
   metadata?: Record<string, unknown>;
 }
 
+// نطاق التنفيذ الصريح — يحدد حدود الذاكرة والجلسة لكل تشغيل
+export type RunScope =
+  | {
+      readonly kind: 'daily';
+      readonly windowId: number | null;
+      readonly sessionId: number | null;
+    }
+  | {
+      readonly kind: 'workspace';
+      readonly windowId: number | null;
+      readonly projectId: number | null;
+      readonly sessionId: number | null;
+      readonly workspaceRoot: string;
+    };
+
 // السياق المُمرَّر لكل وكيل
 export interface Context {
   projectId?: number;
   memories: MemoryItem[];
   userProfile?: UserProfile;
+  // آخر رسائل الجلسة الحالية (الأقدم أولًا) — تُمرَّر لمسار الدردشة
+  recentMessages?: Array<{
+    role: 'user' | 'agent';
+    agentName: string | null;
+    content: string;
+  }>;
 }
 
 // عنصر من الذاكرة

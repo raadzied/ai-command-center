@@ -15,6 +15,9 @@ const UNIT_TESTS = [
   'scripts/test-filesystem-security.ts',
   'scripts/test-task-failure.ts',
   'scripts/test-loop.ts',
+  'scripts/test-loop-scope.ts',
+  'scripts/test-migration.ts',
+  'scripts/test-projects.ts',
 ];
 
 const LIVE_TESTS = [
