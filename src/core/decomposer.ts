@@ -19,7 +19,7 @@ export interface DecomposedTask {
 const DecomposedTaskSchema = z.object({
   id: z.string().min(1).max(20),
   description: z.string().min(3).max(500),
-  intent: z.enum(['learn', 'build', 'design']),
+  intent: z.enum(['learn', 'build', 'design', 'advise', 'plan']),
   dependsOn: z.array(z.string()).max(5).default([]),
 });
 
@@ -34,6 +34,8 @@ const DECOMPOSER_SYSTEM = `أنت محلل مهام دقيق.
 - learn → mentor (تعليم وشرح مفاهيم)
 - build → coder (كتابة كود، أو اختبار كود، أو إصلاح أخطاء)
 - design → designer (تصميم واجهات وأنظمة تصميم)
+- advise → advisor (استشارة استراتيجية، مقارنة خيارات، تحليل مخاطر — نص فقط)
+- plan → commander (خطة عمل نصية مرتّبة بالأولويات — نص فقط)
 
 قواعد التقسيم الصارمة:
 
@@ -66,11 +68,14 @@ const DECOMPOSER_SYSTEM = `أنت محلل مهام دقيق.
 8) لا تتجاوز 5 مهام.
 
 9) إنشاء مجلد أو ملف، أو تعديل كود داخل المشروع = build دائمًا → coder
-   (وليس learn/mentor)، حتى لو صيغ الطلب كوصف أو شرح.
+   (وليس learn/mentor/advise/plan)، حتى لو صيغ الطلب كوصف أو شرح أو خطة.
    مثال: "أنشئ مجلد src/components وضع داخله ملف index.ts" → build واحد.
 
+10) advise وplan نصّيان فقط: استشارة أو مقارنة أو تحليل مخاطر → advise؛
+    خطة عمل وترتيب أولويات بلا إنشاء ملفات أو كود → plan.
+
 أعد JSON فقط:
-{"tasks":[{"id":"t1","description":"...","intent":"learn|build|design","dependsOn":[]}]}`;
+{"tasks":[{"id":"t1","description":"...","intent":"learn|build|design|advise|plan","dependsOn":[]}]}`;
 
 // يفكك طلب المستخدم إلى مهام. إن فشل، يعيد [] (fallback آمِن).
 export async function decompose(userInput: string, signal?: AbortSignal): Promise<DecomposedTask[]> {

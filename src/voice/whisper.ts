@@ -1,4 +1,5 @@
 import { logger as log } from '../llm/logger.js';
+import { transcribeWithHex } from './hex-stt.js';
 
 const GEMINI_STT_MODELS: readonly string[] = [
   'gemini-2.5-flash-lite',
@@ -73,14 +74,22 @@ async function callGeminiAudio(
   }
 }
 
-export async function transcribeWithWhisperFlow(base64Audio: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('مفتاح GEMINI_API_KEY غير موجود في ملف .env');
-
+export async function transcribeWithWhisperFlow(base64Audio: string, mimeType?: string): Promise<string> {
   const audioBuffer = Buffer.from(base64Audio, 'base64');
   if (audioBuffer.length < 200) {
     throw new Error('التسجيل الصوتي قصير جداً أو فارغ');
   }
+
+  // مزوّد محلي أوفلاين أولاً — لا يتطلّب مفتاح API ولا اتصالاً بالشبكة.
+  const localText = await transcribeWithHex(audioBuffer, mimeType ?? 'audio/webm');
+  if (localText !== null && localText.trim() !== '') {
+    log.info('STT succeeded via Hex local', { chars: localText.length });
+    return localText.replace(/\s+/gu, ' ').trim();
+  }
+
+  // تعمل السحابة فقط عند غياب Hex أو فشله (fallback سلس).
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('مفتاح GEMINI_API_KEY غير موجود في ملف .env');
 
   let lastStatus = 0;
   for (const model of GEMINI_STT_MODELS) {

@@ -26,12 +26,16 @@ export function registerVoiceHandlers(): void {
     async (
       _event,
       base64Audio: unknown,
+      mimeType: unknown,
     ): Promise<{ ok: boolean; text?: string; error?: string }> => {
       if (typeof base64Audio !== 'string' || !base64Audio.trim()) {
         return { ok: false, error: 'بيانات الصوت غير صالحة' };
       }
+      const audioMime = typeof mimeType === 'string' && mimeType.trim() !== ''
+        ? mimeType
+        : 'audio/webm';
       try {
-        const text = await transcribeWithWhisperFlow(base64Audio);
+        const text = await transcribeWithWhisperFlow(base64Audio, audioMime);
         return { ok: true, text };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

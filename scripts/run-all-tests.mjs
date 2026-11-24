@@ -11,6 +11,10 @@ const UNIT_TESTS = [
   'scripts/test-essence.ts',
   'scripts/test-tsc-validate.ts',
   'scripts/test-registry.ts',
+  'scripts/test-agents-82a.ts',
+  'scripts/test-shared-board.ts',
+  'scripts/test-agent-bus.ts',
+  'scripts/test-hud-contract.ts',
   'scripts/test-build-start.mjs',
   'scripts/test-filesystem-security.ts',
   'scripts/test-task-failure.ts',
@@ -26,6 +30,9 @@ const UNIT_TESTS = [
   'scripts/test-mcp-markers.ts',
   'scripts/test-mkdir-markers.ts',
   'scripts/test-review-degraded.ts',
+  'scripts/test-hex-stt.ts',
+  'scripts/test-wav-encode.ts',
+  'scripts/test-edge-tts.ts',
   'scripts/test-projects.ts',
 ];
 

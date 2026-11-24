@@ -12,6 +12,7 @@ import { enqueueSpeech } from '../voice/state.js';
 import { getAssistantMode } from '../security/settings.js';
 import { buildInstructionSkillsText, buildMcpToolsText } from '../agents/base.js';
 import { runTask } from './task-runner.js';
+import { createSharedBoard } from './shared-board.js';
 import { RunCancelledError, throwIfAborted } from './run-control.js';
 import type { TaskRunnerDeps } from './task-runner.js';
 import type { RunPhase, RunPhaseListener } from './run-control.js';
@@ -42,6 +43,10 @@ export interface LoopDeps extends TaskRunnerDeps {
 export const CLI_SCOPE: RunScope = {
   kind: 'workspace', windowId: null, projectId: null, sessionId: null, workspaceRoot: process.cwd(),
 };
+
+function createRunId(): string {
+  return `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 const BASE_DEPS: LoopDeps = {
   buildMemoryContext, createPlan, selectAgent, evaluateQuality,
@@ -86,6 +91,9 @@ export async function processInputScoped(
   overrides: Partial<LoopDeps> = {},
 ): Promise<LoopResult> {
   const deps: LoopDeps = { ...createDefaultDeps(scope), ...overrides };
+  // كل تشغيل يحصل على لوحته الخاصة؛ لا مشاركة بين النوافذ ولا حالة عامة.
+  const board = createSharedBoard(scope, createRunId());
+  const runDeps: TaskRunnerDeps = { ...deps, board };
   const start = Date.now();
   const trimmed = input.trim();
   try {
@@ -135,7 +143,7 @@ export async function processInputScoped(
       const task = ordered[i];
       if (!task) continue;
       deps.onTaskStart?.(i + 1, ordered.length);
-      const outcome = await runTask(deps, { task, index: i, total: ordered.length, context, prevOutput });
+      const outcome = await runTask(runDeps, { task, index: i, total: ordered.length, context, prevOutput });
       parts.push(outcome.rendered);
       prevOutput = outcome.rawOutput;
       if (outcome.unverified) anyUnverified = true;
@@ -165,6 +173,8 @@ export async function processInputScoped(
     }
     deps.onPhase?.('ERROR', err instanceof Error ? err.message : String(err));
     throw err;
+  } finally {
+    board.dispose();
   }
 }
 

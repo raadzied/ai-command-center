@@ -176,11 +176,12 @@ declare global {
       onApprovalRequest: (callback: (data: ApprovalRequestData) => void) => () => void;
       onAgentActive: (cb: (agent: string | null) => void) => () => void;
       onTaskStart: (cb: (data: { index: number; total: number }) => void) => () => void;
+      onAgentConsult: (cb: (d: { from: string; to: string; topic: string }) => void) => () => void;
       onRunPhase: (cb: (data: RunPhaseData) => void) => () => void;
       getVoiceStatus: () => Promise<boolean>;
       toggleVoice: (enabled?: boolean) => Promise<boolean>;
       stopVoice: () => Promise<void>;
-      transcribeAudio: (audio: string) => Promise<{
+      transcribeAudio: (audio: string, mimeType?: string) => Promise<{
         ok: boolean;
         text?: string;
         error?: string;

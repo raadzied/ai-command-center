@@ -4,6 +4,10 @@ import { MAX_RETRIES } from './quality-gate.js';
 import { validateTscFiles } from '../tools/tsc-validate.js';
 import { processMcpMarkers } from '../tools/mcp-markers.js';
 import { RunCancelledError, throwIfAborted } from './run-control.js';
+import { runQualityLoop } from './quality-loop.js';
+import { resolveConsultations } from './agent-bus.js';
+import type { ConsultEvent } from './agent-bus.js';
+import type { SharedBoard } from './shared-board.js';
 import type { MarkerResult } from '../tools/markers.js';
 import type { RunPhaseListener } from './run-control.js';
 import type {
@@ -29,6 +33,8 @@ export interface TaskRunnerDeps {
   onAgentActive?: (agentName: AgentName | null) => void;
   signal?: AbortSignal;
   onPhase?: RunPhaseListener;
+  board?: SharedBoard;
+  onConsult?: (event: ConsultEvent) => void;
 }
 export interface TaskRunInput {
   readonly task: Task;
@@ -88,70 +94,16 @@ async function applyMarkers(
   return display;
 }
 
-interface QualityLoopResult {
-  readonly content: string;
-  readonly attempts: number;
-  readonly unverified: boolean;
-}
-
-async function runQualityLoop(deps: TaskRunnerDeps, agent: TaskAgent, task: Task, context: Context): Promise<QualityLoopResult> {
-  throwIfAborted(deps.signal);
-  deps.onPhase?.('THINKING');
-  let output = await agent.execute(task, context, deps.signal ? { signal: deps.signal } : {});
-  throwIfAborted(deps.signal);
-  let attempts = 0;
-
-  while (attempts < MAX_RETRIES) {
-    const failureReason = output.content.includes('[WARN] [الرد مقطوع')
-      ? ('MAX_TOKENS' as const)
-      : undefined;
-    if (failureReason) {
-      log.warn('Detected truncation', { reason: failureReason, agent: agent.name });
-    }
-
-    throwIfAborted(deps.signal);
-    deps.onPhase?.('VALIDATING');
-    const quality = await deps.evaluateQuality({
-      agent: agent.name,
-      task: task.description,
-      output: output.content,
-      ...(failureReason ? { failureReason } : {}),
-    }, deps.signal);
-    throwIfAborted(deps.signal);
-
-    if (quality.status === 'PASS') {
-      return { content: output.content, attempts, unverified: false };
-    }
-
-    if (quality.status === 'FAIL') {
-      attempts += 1;
-      if (attempts >= MAX_RETRIES) {
-        log.warn('Retries exhausted', { agent: agent.name, attempts: MAX_RETRIES + 1 });
-        return { content: output.content, attempts, unverified: false };
-      }
-      const issuesText = quality.issues.map((it) => `- ${it.description}`).join('\n');
-      deps.onPhase?.('THINKING');
-      output = await agent.execute(
-        {
-          ...task,
-          description:
-            `${task.description}\n\n# ملاحظات المراجع:\n${issuesText}\n\nحسّن ردك.`,
-        },
-        context, deps.signal ? { signal: deps.signal } : {},
-      );
-      throwIfAborted(deps.signal);
-      continue;
-    }
-
-    if (quality.status === 'REVIEW_ERROR' && output.content.trim() !== '') {
-      log.warn('Reviewer unavailable — degraded pass', { agent: agent.name });
-      return { content: output.content, attempts, unverified: true };
-    }
-    if (task.verificationRequired) throw new Error('تعذّر التحقق من المخرج (REVIEW_ERROR)');
-    return { content: output.content, attempts, unverified: true };
-  }
-
-  return { content: output.content, attempts, unverified: false };
+function resolvePeer(deps: TaskRunnerDeps, name: AgentName): TaskAgent | null {
+  return deps.selectAgent({
+    id: `peer-${name}`,
+    description: `استشارة من وكيل آخر: ${name}`,
+    intent: 'advise',
+    agentName: name,
+    status: 'pending',
+    verificationRequired: false,
+    dependsOn: [],
+  });
 }
 
 export async function runTask(deps: TaskRunnerDeps, input: TaskRunInput): Promise<TaskRunResult> {
@@ -169,7 +121,18 @@ export async function runTask(deps: TaskRunnerDeps, input: TaskRunInput): Promis
     const enrichedTask = enrichTask(task, prevOutput);
     log.info('Task start', { index: index + 1, of: total, agent: agent.name });
 
-    const quality = await runQualityLoop(deps, agent, enrichedTask, context);
+    const quality = await runQualityLoop(deps, agent, enrichedTask, context, {
+      transformOutput: (content: string): Promise<string> => resolveConsultations(
+        agent.name, content, {
+          context,
+          task: enrichedTask,
+          ...(deps.signal ? { signal: deps.signal } : {}),
+          ...(deps.board ? { board: deps.board } : {}),
+          ...(deps.onConsult ? { onConsult: deps.onConsult } : {}),
+          resolvePeer: (name): TaskAgent | null => resolvePeer(deps, name),
+        },
+      ).then((result): string => result.content),
+    });
     let finalContent = await applyMarkers(deps, agent.name, await applyMcpCalls(quality.content, context, deps));
 
     if (quality.attempts >= MAX_RETRIES && !quality.unverified) {

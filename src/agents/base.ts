@@ -1,5 +1,9 @@
 import type { AgentName, Task, Context } from '../types.js';
 
+// ملاحظة استشارة الأقران — تُحقن في سياق كل وكيل.
+export const PEER_CONSULT_NOTE =
+  'استشارة الأقران: استخدم [[ASK_PEER:<agent>|<question>]] فقط عند الحاجة الحقيقية لرأي وكيل متخصص آخر (حد أقصى استشارتين، ولا تستخدمه في المهام البسيطة).';
+
 // مخرج موحّد لكل وكيل
 export interface AgentOutput {
   content: string;
@@ -60,6 +64,7 @@ export function buildContextText(context: Context): string {
   if (skillsText !== '') sections.push(skillsText);
   const mcpText = buildMcpToolsText(context);
   if (mcpText !== '') sections.push(mcpText);
+  sections.push(PEER_CONSULT_NOTE);
   return sections.join('\n\n');
 }
 

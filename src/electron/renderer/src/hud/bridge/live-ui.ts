@@ -131,25 +131,24 @@ export function createLiveSession(
 ): LiveSession {
   let live = false;
   let reopen = 0;
+  let speaking = false;
 
   const listenSoon = (delay: number): void => {
     if (reopen !== 0) window.clearTimeout(reopen);
     reopen = window.setTimeout((): void => {
-      reopen = 0;
-      if (!live) return;
+      reopen = 0; if (!live || speaking) return;
       app.setCoreStatus('LISTENING');
       startVoice();
     }, delay);
   };
   const tts = createTtsPlayer((): void => {
-    if (live) listenSoon(450);
+    speaking = false;
+    if (live) listenSoon(300);
   });
   const stopPlayback = (): void => { tts.stop(); };
   const stopAudio = (): void => {
     stopPlayback();
-    void api.stopVoice().catch((error: unknown): void => {
-      console.error('[apex-live] stopVoice failed', error);
-    });
+    void api.stopVoice().catch((error: unknown): void => { console.error('[apex-live] stopVoice failed', error); });
   };
   const exit = (): void => {
     if (!live) return;
@@ -166,11 +165,7 @@ export function createLiveSession(
     });
   };
   const ui = createLiveVoiceUi({
-    onInterrupt: (): void => {
-      stopAudio();
-      ui.setPhase('listening');
-      startVoice();
-    },
+    onInterrupt: (): void => { speaking = false; stopAudio(); ui.setPhase('listening'); startVoice(); },
     onClose: exit,
   });
   const voice = createVoiceRecorder(app, api, {
@@ -191,7 +186,7 @@ export function createLiveSession(
     onPhase: (phase): void => {
       if (!live) return;
       if (phase === 'listening') app.setCoreStatus('LISTENING');
-      if (phase === 'idle') listenSoon(600);
+      if (phase === 'idle' && !speaking) listenSoon(600);
       ui.setPhase(phase === 'idle' ? 'listening' : phase);
     },
     autoStopOnSilence: true,
@@ -211,7 +206,9 @@ export function createLiveSession(
     pushAudio: (payload: VoiceAudioPayload): void => {
       tts.push(payload);
       if (!live) return;
+      speaking = true;
       if (reopen !== 0) window.clearTimeout(reopen); reopen = 0;
+      voice.stop();
       ui.setPhase('speaking');
     },
     stopAudio,

@@ -1,29 +1,53 @@
-import { getVoiceForAgent } from './voices.js';
-import { writeFile, unlink } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { logger as log } from '../llm/logger.js';
+import { synthesizeEdgeTts } from './edge-tts.js';
+import { getVoiceForAgent } from './voices.js';
 
 const HAKIM_URL = 'https://api.tryhakim.ai/v1/audio/speech';
+const HAKIM_COOLDOWN_MS = 30 * 60 * 1000;
 
 let currentChild: ChildProcess | null = null;
 let playbackCancelled = false;
 let currentAbort: AbortController | null = null;
+let hakimCooldownUntil = 0;
 
 export interface SpeakOptions {
   agentName?: string | null;
 }
 
-// بث الصوت إلى Electron من خلال IPC
+export type TtsProvider = 'hakim' | 'edge' | 'google' | 'sapi';
+
+/** Hakim is dropped for 30 minutes after a quota error. */
+export function ttsProviderOrder(quietHakim: boolean): readonly TtsProvider[] {
+  return quietHakim ? ['edge', 'google', 'sapi'] : ['hakim', 'edge', 'google', 'sapi'];
+}
+
+export function noteHakimQuotaExceeded(now: number = Date.now()): void {
+  hakimCooldownUntil = now + HAKIM_COOLDOWN_MS;
+}
+
+export function getHakimCooldownRemainingMs(now: number = Date.now()): number {
+  return Math.max(0, hakimCooldownUntil - now);
+}
+
+export function resetHakimCooldown(): void {
+  hakimCooldownUntil = 0;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export type AudioEmitCallback = (payload: { base64Mp3: string; agentName: string | null }) => void;
 let electronAudioEmitter: AudioEmitCallback | null = null;
 export function setElectronAudioEmitter(cb: AudioEmitCallback | null): void {
   electronAudioEmitter = cb;
 }
 
-// جلب صوت Google TTS المجاني (بدون مفتاح API)
 async function fetchFreeArabicMp3(text: string, signal: AbortSignal): Promise<Buffer | null> {
   const clean = text.replace(/\s+/g, ' ').trim().slice(0, 180);
   if (!clean) return null;
@@ -39,160 +63,133 @@ async function fetchFreeArabicMp3(text: string, signal: AbortSignal): Promise<Bu
   return Buffer.from(await res.arrayBuffer());
 }
 
-function playMp3File(filePath: string): Promise<void> {
-  return new Promise((resolve) => {
-    const escaped = filePath.replace(/'/g, "''");
-    const psCmd = `
-      Add-Type -AssemblyName presentationCore;
-      $player = New-Object System.Windows.Media.MediaPlayer;
-      $player.Open([Uri]::new('${escaped}'));
-      $player.Play();
-      $waited = 0;
-      while (-not $player.NaturalDuration.HasTimeSpan -and $waited -lt 50) {
-        Start-Sleep -Milliseconds 100;
-        $waited++;
-      }
-      while ($player.NaturalDuration.HasTimeSpan -and $player.Position -lt $player.NaturalDuration.TimeSpan) {
-        Start-Sleep -Milliseconds 200;
-      }
-      $player.Close();
-    `;
+function runPowerShell(psCmd: string): Promise<void> {
+  return new Promise<void>((resolve): void => {
     const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], {
-      stdio: 'ignore',
-      windowsHide: true,
+      stdio: 'ignore', windowsHide: true,
     });
     currentChild = child;
-    child.on('close', () => {
-      if (currentChild === child) currentChild = null;
-      resolve();
-    });
-    child.on('error', () => {
-      if (currentChild === child) currentChild = null;
-      resolve();
-    });
+    const done = (): void => { if (currentChild === child) currentChild = null; resolve(); };
+    child.on('close', done);
+    child.on('error', done);
   });
+}
+
+function playMp3File(filePath: string): Promise<void> {
+  const escaped = filePath.replace(/'/g, "''");
+  return runPowerShell(`
+    Add-Type -AssemblyName presentationCore;
+    $player = New-Object System.Windows.Media.MediaPlayer;
+    $player.Open([Uri]::new('${escaped}'));
+    $player.Play();
+    $waited = 0;
+    while (-not $player.NaturalDuration.HasTimeSpan -and $waited -lt 50) {
+      Start-Sleep -Milliseconds 100; $waited++;
+    }
+    while ($player.NaturalDuration.HasTimeSpan -and $player.Position -lt $player.NaturalDuration.TimeSpan) {
+      Start-Sleep -Milliseconds 200;
+    }
+    $player.Close();
+  `);
 }
 
 function speakLocalFallback(text: string): Promise<void> {
-  return new Promise((resolve) => {
-    const clean = text.replace(/['"`$]/g, ' ').slice(0, 500);
-    const psCmd = `
-      Add-Type -AssemblyName System.Speech;
-      $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
-      $arVoice = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'ar-*' } | Select-Object -First 1;
-      if ($arVoice) { $synth.SelectVoice($arVoice.VoiceInfo.Name); }
-      $synth.Speak('${clean}');
-    `;
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCmd], {
-      stdio: 'ignore',
-      windowsHide: true,
-    });
-    currentChild = child;
-    child.on('close', () => {
-      if (currentChild === child) currentChild = null;
-      resolve();
-    });
-    child.on('error', () => {
-      if (currentChild === child) currentChild = null;
-      resolve();
-    });
-  });
+  const clean = text.replace(/['"`$]/g, ' ').slice(0, 500);
+  return runPowerShell(`
+    Add-Type -AssemblyName System.Speech;
+    $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer;
+    $arVoice = $synth.GetInstalledVoices() | Where-Object { $_.VoiceInfo.Culture.Name -like 'ar-*' } | Select-Object -First 1;
+    if ($arVoice) { $synth.SelectVoice($arVoice.VoiceInfo.Name); }
+    $synth.Speak('${clean}');
+  `);
 }
 
-export async function speak(
-  text: string,
-  options: SpeakOptions = {},
-): Promise<void> {
+interface HakimResult {
+  readonly buffer: Buffer | null;
+  readonly quotaExceeded: boolean;
+}
+
+async function fetchHakimMp3(text: string, voice: string, signal: AbortSignal): Promise<HakimResult> {
+  const res = await fetch(HAKIM_URL, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.HAKIM_API_KEY ?? ''}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'hakim-fast-v1', voice, input: text, response_format: 'mp3' }),
+    signal,
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    if (res.status === 402 || errText.includes('quota_exceeded')) {
+      noteHakimQuotaExceeded();
+      log.warn('Hakim TTS quota exceeded — using Edge for 30 minutes', { status: res.status });
+      return { buffer: null, quotaExceeded: true };
+    }
+    log.warn('Hakim TTS error', { status: res.status, err: errText.slice(0, 200) });
+    return { buffer: null, quotaExceeded: false };
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (buffer.length < 1000) {
+    log.warn('Hakim returned a small audio buffer', { bytes: buffer.length });
+    return { buffer: null, quotaExceeded: false };
+  }
+  return { buffer, quotaExceeded: false };
+}
+
+async function acquireMp3(text: string, agentName: string | null, signal: AbortSignal): Promise<Buffer | null> {
+  const order = ttsProviderOrder(getHakimCooldownRemainingMs() > 0);
+  if (order.includes('hakim') && process.env.HAKIM_API_KEY) {
+    try {
+      const hakim = await fetchHakimMp3(text, getVoiceForAgent(agentName), signal);
+      if (hakim.buffer) return hakim.buffer;
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') throw err;
+      log.warn('Hakim TTS request failed', { message: messageOf(err) });
+    }
+  }
+  if (order.includes('edge')) {
+    const edge = await synthesizeEdgeTts(text, agentName ?? undefined, signal);
+    if (edge && edge.length > 0) {
+      log.info('TTS via Edge Neural', { bytes: edge.length, agent: agentName ?? 'core' });
+      return edge;
+    }
+  }
+  return order.includes('google') ? fetchFreeArabicMp3(text, AbortSignal.any([signal, AbortSignal.timeout(8000)])) : null;
+}
+
+export async function speak(text: string, options: SpeakOptions = {}): Promise<void> {
   if (!text.trim()) return;
   playbackCancelled = false;
   const { agentName } = options;
-
-  const apiKey = process.env.HAKIM_API_KEY;
-  let mp3Buffer: Buffer | null = null;
-
+  const abort = new AbortController();
+  currentAbort = abort;
   try {
-    if (apiKey) {
-      // --- Hakim AI ---
-      const voice = getVoiceForAgent(agentName ?? null);
-      const abort = new AbortController();
-
-      currentAbort = abort;
-      try {
-        const res = await fetch(HAKIM_URL, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'hakim-fast-v1',
-            voice,
-            input: text,
-            response_format: 'mp3',
-          }),
-          signal: abort.signal,
-        });
-
-        if (!res.ok) {
-          const errText = await res.text();
-          log.warn('Hakim TTS error — trying Google TTS', { status: res.status, err: errText.slice(0, 200) });
-        } else {
-          const buffer = Buffer.from(await res.arrayBuffer());
-          if (buffer.length < 1000) {
-            log.warn('Small audio buffer — trying Google TTS', { bytes: buffer.length });
-          } else {
-            mp3Buffer = buffer;
-          }
-        }
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') throw err;
-        const msg = err instanceof Error ? err.message : String(err);
-        log.warn('Hakim TTS request failed — trying Google TTS', { message: msg });
-      }
-
-      // خطة بديلة أولى: Google TTS المجاني
-      if (!mp3Buffer) {
-        mp3Buffer = await fetchFreeArabicMp3(text, AbortSignal.timeout(8000));
-      }
-    } else {
-      // --- بدون مفتاح API → Google TTS المجاني ---
-      mp3Buffer = await fetchFreeArabicMp3(text, AbortSignal.timeout(8000));
+    const mp3Buffer = await acquireMp3(text, agentName ?? null, abort.signal);
+    if (!mp3Buffer) {
+      log.warn('No MP3 buffer — falling back to Windows SAPI');
+      await speakLocalFallback(text);
+      return;
     }
-
-    // ---- مسار الصوت إلى Electron ----
-    if (mp3Buffer && electronAudioEmitter) {
+    if (electronAudioEmitter) {
       log.info('Emitting voice audio to Electron', { bytes: mp3Buffer.length, agent: agentName ?? 'core' });
-      // إرسال payload عبر IPC إلى renderer
       electronAudioEmitter({ base64Mp3: mp3Buffer.toString('base64'), agentName: agentName ?? null });
-      // تقريبية للنطق
-      const approxMs = Math.min(8000, Math.max(2000, text.length * 65));
-      await new Promise<void>((r) => setTimeout(() => r(), approxMs));
+      await new Promise<void>((resolve): void => {
+        setTimeout(resolve, Math.min(8000, Math.max(2000, text.length * 65)));
+      });
       return;
     }
-
-    // ---- Electron غير موجود → تشغيل محلي باستخدام PowerShell ----
-    if (mp3Buffer && !electronAudioEmitter) {
-      const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const tmpPath = join(tmpdir(), `ai-cc-${stamp}.mp3`);
-      await writeFile(tmpPath, mp3Buffer);
-      if (playbackCancelled) {
-        log.info('Playback skipped - cancelled before start');
-        return;
-      }
-      await playMp3File(tmpPath);
+    const stamp = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const tmpPath = join(tmpdir(), `ai-cc-${stamp}.mp3`);
+    await writeFile(tmpPath, mp3Buffer);
+    if (playbackCancelled) {
+      log.info('Playback skipped - cancelled before start');
       return;
     }
-
-    // ---- لا يوجد أي مخزن صوتي بعد المحاولتين ----
-    log.warn('No MP3 buffer — falling back to Windows SAPI');
-    await speakLocalFallback(text);
+    await playMp3File(tmpPath);
   } catch (err) {
     if (err instanceof Error && err.name === 'AbortError') {
       log.info('TTS aborted by user');
       return;
     }
-    const msg = err instanceof Error ? err.message : String(err);
-    log.warn('TTS request failed — using local fallback', { message: msg });
+    log.warn('TTS request failed — using local fallback', { message: messageOf(err) });
     await speakLocalFallback(text);
   } finally {
     if (currentAbort) currentAbort.abort();
@@ -204,12 +201,8 @@ export function killCurrentPlayback(): void {
   playbackCancelled = true;
   currentAbort?.abort();
   if (currentChild) {
-    try {
-      currentChild.kill();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.warn('Kill playback failed', { message: msg });
-    }
+    try { currentChild.kill(); }
+    catch (err) { log.warn('Kill playback failed', { message: messageOf(err) }); }
     currentChild = null;
   }
 }

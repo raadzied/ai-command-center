@@ -1,10 +1,10 @@
 // النية المستخرجة من مدخلات المستخدم
 import type { FileDiffPreview } from './tools/diff.js';
 
-export type Intent = 'learn' | 'build' | 'design' | 'chat';
+export type Intent = 'learn' | 'build' | 'design' | 'advise' | 'plan' | 'chat';
 
 // الوكيل المسؤول عن المهمة
-export type AgentName = 'mentor' | 'coder' | 'designer';
+export type AgentName = 'mentor' | 'coder' | 'designer' | 'advisor' | 'commander';
 
 // مهمة واحدة في خطة التنفيذ
 export interface Task {

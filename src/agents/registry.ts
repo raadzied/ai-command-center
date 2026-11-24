@@ -3,6 +3,8 @@ import type { AgentName } from '../types.js';
 import { mentorAgent } from './mentor.js';
 import { coderAgent } from './coder.js';
 import { designerAgent } from './designer.js';
+import { advisorAgent } from './advisor.js';
+import { commanderAgent } from './commander.js';
 
 // وصف موحّد لكل وكيل — يُستخدم للتوجيه والتحقق
 export interface AgentMeta {
@@ -57,5 +59,17 @@ registerAgent('coder', {
 registerAgent('designer', {
   agent: designerAgent,
   capabilities: ['design_system', 'ui_layout', 'accessibility', 'rtl'],
+  riskLevel: 'low',
+});
+
+registerAgent('advisor', {
+  agent: advisorAgent,
+  capabilities: ['strategic_advice', 'architecture_review', 'option_comparison', 'risk_analysis'],
+  riskLevel: 'low',
+});
+
+registerAgent('commander', {
+  agent: commanderAgent,
+  capabilities: ['execution_planning', 'priority_ordering', 'dependency_mapping'],
   riskLevel: 'low',
 });

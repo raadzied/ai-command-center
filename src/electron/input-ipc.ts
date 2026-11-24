@@ -59,6 +59,10 @@ export function setupProcessInputIpc(): void {
         onTaskStart: (index, total): void => {
           event.sender.send('task:start', { index, total });
         },
+        // المرسِل فقط — لا بث عبر getAllWindows().
+        onConsult: (payload): void => {
+          event.sender.send('agent:consult', payload);
+        },
       });
       return {
         ok: true,

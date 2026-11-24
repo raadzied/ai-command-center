@@ -1,12 +1,14 @@
 import type { Task, Intent, AgentName } from '../types.js';
 import type { Agent } from '../agents/base.js';
-import { getAgent } from '../agents/registry.js';
+import { getAgent, listRegisteredAgents } from '../agents/registry.js';
 
 // خريطة النية → اسم الوكيل
 const INTENT_TO_AGENT: Record<Exclude<Intent, 'chat'>, AgentName> = {
   learn: 'mentor',
   build: 'coder',
   design: 'designer',
+  advise: 'advisor',
+  plan: 'commander',
 };
 
 // يعيّن اسم الوكيل من النية
@@ -23,5 +25,5 @@ export function selectAgent(task: Task): Agent | null {
 
 // يعيد قائمة الوكلاء المسجلين
 export function listAgents(): AgentName[] {
-  return ['mentor', 'coder', 'designer'];
+  return listRegisteredAgents();
 }

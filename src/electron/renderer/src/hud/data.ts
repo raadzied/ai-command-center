@@ -59,9 +59,9 @@ export const AGENTS: AgentNode[] = [
     name: 'Advisor',
     active: true,
     icon: ICONS.advisor ?? '',
-    role: 'Safety & Approval Gate',
-    task: 'Guarding every write, tool call and MCP invocation',
-    logs: ['Human-in-the-loop approval required for changes', 'Per-window approval isolation active'],
+    role: 'Strategic & Architecture Advisor',
+    task: 'Comparing options and surfacing architectural risks',
+    logs: ['Consultation is text-only: no file or code changes', 'Scoped to the active run context'],
   },
   {
     id: 'browser',
@@ -77,9 +77,9 @@ export const AGENTS: AgentNode[] = [
     name: 'Commander',
     active: true,
     icon: ICONS.commander ?? '',
-    role: 'Workspace File Tools & Validation',
-    task: 'Scoped file reads, atomic writes and tsc checks',
-    logs: ['File operations confined to workspace root', 'Writes verified with SHA-256 recheck'],
+    role: 'Execution Planning & Priority Ordering',
+    task: 'Turning goals into ordered, dependency-aware plans',
+    logs: ['Planning output is text-only: execution stays with Coder', 'Steps ordered by priority within the active run'],
   },
 ];
 

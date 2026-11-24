@@ -23,6 +23,7 @@
     "api-anything": "^0.5.0",
     "better-sqlite3": "^13.0.3",
     "dotenv": "^16.4.5",
+    "node-edge-tts": "^1.2.12",
     "sqlite-vec": "^0.1.6",
     "zod": "^3.23.8"
   },

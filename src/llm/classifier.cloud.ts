@@ -2,12 +2,15 @@ import 'dotenv/config';
 import { z } from 'zod';
 import { logger } from './logger.js';
 import { fetchWithTimeout } from './request-control.js';
+import { embed } from './embed.gemini.js';
 import type { LLMProvider, ClassificationResult, Intent } from '../types.js';
+
+export { embed };
 
 const log = logger;
 
 const GroqResponseSchema = z.object({
-  intent: z.enum(['learn', 'build', 'design', 'chat']),
+  intent: z.enum(['learn', 'build', 'design', 'advise', 'plan', 'chat']),
   confidence: z.number().min(0).max(1),
   reasoning: z.string().min(1).max(300),
 });
@@ -32,12 +35,17 @@ function getKey(name: 'GROQ_API_KEY' | 'GEMINI_API_KEY'): string {
 
 const CLASSIFY_SYSTEM_PROMPT = `You are an intent classifier for an AI agent system. Classify the user message into EXACTLY ONE of these intents:
 - "learn": user wants explanation, tutorial, or to understand
-- "build": user wants code, files, or technical artifact
+- "build": user wants code, files, folders, or technical artifact
 - "design": user wants UI/UX/visual/system design
+- "advise": user wants strategic or architectural consultation, option comparison, or risk analysis
+- "plan": user wants an execution plan, priorities, or step ordering in text only
 - "chat": greetings, general talk, or unclear requests
 
+HARD PRIORITY RULE:
+If the user asks to create or modify a file, folder, or code, ALWAYS choose "build", even when the wording also mentions advice, planning, or explanation. Choose "plan" only for text-only planning with no file or code changes. Choose "advise" only for text-only consultation.
+
 Return ONLY valid JSON with this exact shape:
-{"intent":"learn|build|design|chat","confidence":0.0-1.0,"reasoning":"one short English sentence"}`;
+{"intent":"learn|build|design|advise|plan|chat","confidence":0.0-1.0,"reasoning":"one short English sentence"}`;
 
 // يتحقق أن القيمة كائن مسطح
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -143,66 +151,6 @@ export async function classify(input: string, signal?: AbortSignal): Promise<Cla
     log.warn('Classification request failed, using fallback', { err });
     return fallbackResult('classification failed');
   }
-}
-
-// يتحقق من شكل متجه التضمين ويعيده
-function extractEmbedding(data: unknown): number[] {
-  if (!isRecord(data)) throw new Error('Invalid Gemini embed response');
-  const embedding: unknown = data['embedding'];
-  if (!isRecord(embedding)) throw new Error('Invalid Gemini embed response');
-  const values: unknown = embedding['values'];
-  if (!Array.isArray(values) || values.length !== 768) {
-    throw new Error('Invalid Gemini embedding vector: expected 768 numbers');
-  }
-  if (!values.every((v) => typeof v === 'number')) {
-    throw new Error('Invalid Gemini embedding vector: expected numbers only');
-  }
-  return values as number[];
-}
-
-// يولد متجه تضمين عبر Gemini مع retry و backoff
-export async function embed(text: string): Promise<number[]> {
-  const apiKey = getKey('GEMINI_API_KEY');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${apiKey}`;
-
-  const maxAttempts = 3;
-  const retryable = [429, 500, 502, 503, 504];
-  let lastStatus = 0;
-  let lastBody: string = '';
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const response = await fetchWithTimeout(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: { parts: [{ text }] }, outputDimensionality: 768 }),
-    });
-
-    if (response.ok) {
-      const data: unknown = (await response.json()) as unknown;
-      return extractEmbedding(data);
-    }
-
-    lastStatus = response.status;
-    try {
-      lastBody = await response.text();
-    } catch {
-      lastBody = '';
-    }
-
-    if (!retryable.includes(lastStatus)) break;
-
-    if (attempt < maxAttempts) {
-      const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
-      log.warn('Gemini embed retry', { status: lastStatus, attempt, delayMs });
-      await new Promise((r) => setTimeout(r, delayMs));
-    }
-  }
-
-  log.error('Gemini embed failed after retries', {
-    status: lastStatus,
-    bodySnippet: lastBody.slice(0, 200),
-  });
-  throw new Error(`Gemini embed failed with status ${lastStatus}`);
 }
 
 export const cloudProvider: LLMProvider = {

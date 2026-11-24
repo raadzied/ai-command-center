@@ -1,7 +1,7 @@
 /** Automatic silence detection (VAD) built on the Web Audio API. */
 
 const SPEECH_THRESHOLD = 0.018;
-const SILENCE_MS = 1400;
+const SILENCE_MS = 1800;
 const NO_SPEECH_TIMEOUT_MS = 8000;
 const POLL_MS = 100;
 const LEVEL_GAIN = 8;

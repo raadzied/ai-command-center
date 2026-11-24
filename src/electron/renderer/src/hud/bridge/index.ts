@@ -1,56 +1,18 @@
 import type { ApprovalRequestData } from '../../window';
-import { byId, errorMessage, esc } from '../dom';
-import type { ApexHudApi, RunPhase } from '../types';
+import { byId, errorMessage } from '../dom';
+import type { ApexHudApi } from '../types';
 import { hideApprovalModal, showApprovalModal } from './approval';
 import { appendLiveSettings } from './settings-panel';
 import { createLiveSession } from './live-ui';
 import { refreshHudSnapshot } from './snapshot';
 import { updateWorkspaceContext, initProjectBridge } from './projects';
-
-interface AgentMeta {
-  node: string;
-  label: string;
-}
-
-const AGENT_META: Record<string, AgentMeta> = {
-  mentor: { node: 'mentor', label: 'Mentor' },
-  coder: { node: 'coder', label: 'Coder' },
-  designer: { node: 'designer', label: 'Designer' },
-};
+import { agentNodeId, agentLabel } from './agent-meta';
+import {
+  getLastRunPhase, resetLastRunPhase, isRunPhase, showRunPhase, showResponse,
+} from './run-display';
+import { bindConsultPulse } from './consult-pulse';
 
 let pending = false;
-let lastRunPhase: RunPhase | null = null;
-const agentLabel = (name: string | null): string => (name ? AGENT_META[name]?.label ?? name : 'Core');
-
-interface ResponseMeta {
-  agentUsed?: string | null;
-  intent?: string;
-  elapsedMs?: number;
-}
-
-function isRunPhase(value: string): value is RunPhase {
-  return ['IDLE', 'PLANNING', 'THINKING', 'AWAITING_APPROVAL', 'APPLYING_CHANGES',
-    'VALIDATING', 'DONE', 'CANCELLED', 'ERROR'].includes(value);
-}
-
-function showRunPhase(app: ApexHudApi, phase: RunPhase, detail?: string): void {
-  lastRunPhase = phase;
-  const status = phase === 'CANCELLED' ? 'HALTED' : phase === 'IDLE' || phase === 'DONE' || phase === 'ERROR' ? 'IDLE' : 'THINKING';
-  app.setCoreStatus(status);
-  const label = byId<HTMLElement>('status-label');
-  if (label) label.textContent = `STATUS: ${phase}`;
-  app.addSystemLog('Orchestrator', detail ? `${phase}: ${detail}` : `Run phase: ${phase}`);
-}
-
-function showResponse(app: ApexHudApi, content: string, meta: ResponseMeta): void {
-  const tags = [
-    `<span class="ins-tag is-cyan">${esc(agentLabel(meta.agentUsed ?? null))}</span>`,
-    `<span class="ins-tag is-amber">intent: ${esc(meta.intent ?? 'n/a')}</span>`,
-    `<span class="ins-tag">${esc(meta.elapsedMs ?? 0)}ms</span>`,
-  ].join('');
-  const body = `<div class="ins-trace"><div class="ins-row" style="justify-content: flex-start; flex-wrap: wrap">${tags}</div><pre class="ins-pre">${esc(content)}</pre></div>`;
-  app.openInspector('Core Response', 'LIVE AGENT OUTPUT', '#22D3EE', body);
-}
 
 async function dispatch(
   app: ApexHudApi,
@@ -81,7 +43,7 @@ async function dispatch(
   }
 
   pending = true;
-  lastRunPhase = null;
+  resetLastRunPhase();
   app.setCoreStatus('THINKING');
   app.addSystemLog('You', raw);
   app.showToast('Dispatched to core...');
@@ -112,7 +74,7 @@ async function dispatch(
     return null;
   } finally {
     pending = false;
-    if (lastRunPhase !== 'CANCELLED') app.setCoreStatus('IDLE');
+    if (getLastRunPhase() !== 'CANCELLED') app.setCoreStatus('IDLE');
     app.renderWings(); void app.refreshMemoryStats(); void refreshHudSnapshot(app);
   }
 }
@@ -138,7 +100,7 @@ export function bindBridge(app: ApexHudApi): void {
       app.renderWings();
       return;
     }
-    const nodeId = AGENT_META[agent]?.node;
+    const nodeId = agentNodeId(agent);
     const node = nodeId ? app.agents.find((item) => item.id === nodeId) : undefined;
     if (node) {
       node.active = true;
@@ -155,6 +117,8 @@ export function bindBridge(app: ApexHudApi): void {
     app.showToast(`Task ${index}/${total} running...`);
     app.triggerBurst(1500);
   });
+
+  bindConsultPulse(app, api);
 
   api.onRunPhase(({ phase, detail }): void => {
     if (isRunPhase(phase)) showRunPhase(app, phase, detail);
