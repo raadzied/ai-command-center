@@ -3,7 +3,7 @@ import { openInspectorPanel } from './inspector';
 import { openSettingsHub } from './settings-hub';
 import { openFileSystemInspector } from './bridge/fs-panel';
 import { getCachedSnapshot } from './bridge/snapshot';
-import type { ApexHudApi } from './types';
+import type { ApexHudApi, ResourceNode } from './types';
 
 function memorySection(): string {
   const snap = getCachedSnapshot();
@@ -51,6 +51,19 @@ function statusSection(app: ApexHudApi, pct: number): string {
     </div>`;
 }
 
+function activitySection(resource: ResourceNode): string {
+  const last = resource.lastActivity;
+  const when = last === undefined
+    ? 'No activity recorded'
+    : `${new Date(last.at).toISOString().slice(11, 19)} - ${last.detail}`;
+  return `
+    <div class="ins-trace">
+      <div class="ins-section-title">Last Activity</div>
+      <div class="ins-trace-line">${esc(resource.status.toUpperCase())}</div>
+      <div class="ins-trace-line">${esc(when)}</div>
+    </div>`;
+}
+
 /** Resource / memory inspector. */
 export function openResourceInspector(app: ApexHudApi, id: string): void {
   const resource = app.resources.find((item) => item.id === id);
@@ -79,6 +92,7 @@ export function openResourceInspector(app: ApexHudApi, id: string): void {
         <span class="ins-key">${pct}%</span>
       </div>
     </div>
+    ${activitySection(resource)}
     ${extra}`;
 
   openInspectorPanel(resource.name, 'SYSTEM RESOURCE NODE', '#38BDF8', body);

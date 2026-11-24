@@ -38,8 +38,8 @@ export class ApexHud implements ApexHudApi {
 
   constructor() {
     this.state = {
-      coreStatus: 'THINKING',
-      previousStatus: 'THINKING',
+      coreStatus: 'IDLE',
+      previousStatus: 'IDLE',
       focusMode: false,
       burstUntil: 0,
       elapsedSeconds: 9 * 60 + 43,
@@ -145,18 +145,6 @@ export class ApexHud implements ApexHudApi {
   }
 
   handleAgentClick(id: string): void {
-    const agent = this.agents.find((item) => item.id === id);
-    if (!agent) return;
-    if (this.state.coreStatus !== 'HALTED') {
-      agent.active = !agent.active;
-      if (agent.active) this.audio.playDispatch();
-      else this.audio.playClick(620);
-      this.addSystemLog(agent.name, agent.active ? 'Dispatched by Orchestrator' : 'Switched to standby');
-      this.triggerBurst(1500);
-      this.renderWings();
-    } else {
-      this.audio.playClick(320);
-    }
     this.openAgentInspector(id);
   }
 

@@ -6,6 +6,8 @@ import { processMcpMarkers } from '../tools/mcp-markers.js';
 import { RunCancelledError, throwIfAborted } from './run-control.js';
 import { runQualityLoop } from './quality-loop.js';
 import { resolveConsultations } from './agent-bus.js';
+import { emitActivity } from './hud-activity.js';
+import type { ActivityEmitter } from './hud-activity.js';
 import type { ConsultEvent } from './agent-bus.js';
 import type { SharedBoard } from './shared-board.js';
 import type { MarkerResult } from '../tools/markers.js';
@@ -35,6 +37,7 @@ export interface TaskRunnerDeps {
   onPhase?: RunPhaseListener;
   board?: SharedBoard;
   onConsult?: (event: ConsultEvent) => void;
+  onActivity?: ActivityEmitter;
 }
 export interface TaskRunInput {
   readonly task: Task;
@@ -58,14 +61,25 @@ function enrichTask(task: Task, prevOutput: string): Task {
   return { ...task, description: `${task.description}\n\n${priorContext}` };
 }
 
-function applyMcpCalls(content: string, context: Context, deps: TaskRunnerDeps): Promise<string> {
-  if (!content.includes('[[MCP_CALL:')) return Promise.resolve(content);
+async function applyMcpCalls(content: string, context: Context, deps: TaskRunnerDeps): Promise<string> {
+  if (!content.includes('[[MCP_CALL:')) return content;
   deps.onPhase?.('APPLYING_CHANGES');
-  return processMcpMarkers(content, context.scope, deps.signal).then((result): string => {
+  emitActivity(deps.onActivity, { nodeId: 'mcp', state: 'active' });
+  try {
+    const result = await processMcpMarkers(content, context.scope, deps.signal);
+    emitActivity(deps.onActivity, {
+      nodeId: 'mcp', state: 'done', detail: `${result.executedCount} calls`, ttlMs: 2500,
+    });
     if (result.toolOutputs.length === 0) return result.cleanedContent;
     log.info('MCP markers executed', { count: result.executedCount });
     return `${result.cleanedContent}\n\n# MCP Tool Results\n${result.toolOutputs.join('\n')}`;
-  });
+  } catch (err) {
+    emitActivity(deps.onActivity, {
+      nodeId: 'mcp', state: 'error',
+      detail: err instanceof Error ? err.message : String(err), ttlMs: 2500,
+    });
+    throw err;
+  }
 }
 
 async function applyMarkers(
@@ -75,7 +89,21 @@ async function applyMarkers(
 ): Promise<string> {
   if (agentName !== 'coder') return content;
   throwIfAborted(deps.signal); deps.onPhase?.('APPLYING_CHANGES');
-  const markerResult = await deps.processMarkers(content, deps.signal, deps.onPhase);
+  const hasMarkers = content.includes('[[MKDIR:') || content.includes('[WRITE_FILE:');
+  if (hasMarkers) emitActivity(deps.onActivity, { nodeId: 'fs', state: 'active' });
+  let markerResult: MarkerResult;
+  try {
+    markerResult = await deps.processMarkers(content, deps.signal, deps.onPhase);
+  } catch (err) {
+    if (hasMarkers) emitActivity(deps.onActivity, {
+      nodeId: 'fs', state: 'error',
+      detail: err instanceof Error ? err.message : String(err), ttlMs: 2500,
+    });
+    throw err;
+  }
+  if (hasMarkers) emitActivity(deps.onActivity, {
+    nodeId: 'fs', state: 'done', detail: `${markerResult.wroteCount} writes`, ttlMs: 2500,
+  });
   throwIfAborted(deps.signal);
   let display = markerResult.cleanedContent + markerResult.writeStatus;
   if (markerResult.totalMarkers > 0) log.info('Markers processed', {
@@ -117,6 +145,7 @@ export async function runTask(deps: TaskRunnerDeps, input: TaskRunInput): Promis
       throw new Error('لا وكيل مناسب لهذه المهمة');
     }
     deps.onAgentActive?.(agent.name);
+    emitActivity(deps.onActivity, { nodeId: agent.name, state: 'active', detail: task.description.split('\n')[0] ?? '' });
 
     const enrichedTask = enrichTask(task, prevOutput);
     log.info('Task start', { index: index + 1, of: total, agent: agent.name });
@@ -152,6 +181,7 @@ export async function runTask(deps: TaskRunnerDeps, input: TaskRunInput): Promis
     if (agent.name === 'mentor' && !quality.unverified) {
       await extractAndSaveSkill(task.description, quality.content);
     }
+    emitActivity(deps.onActivity, { nodeId: agent.name, state: 'done', detail: task.description.split('\n')[0] ?? '', ttlMs: 2500 });
 
     return {
       rendered,
@@ -169,6 +199,7 @@ export async function runTask(deps: TaskRunnerDeps, input: TaskRunInput): Promis
       message: msg,
     });
     deps.onAgentActive?.(null);
+    emitActivity(deps.onActivity, { nodeId: task.agentName, state: 'error', detail: msg, ttlMs: 2500 });
 
     return {
       rendered:

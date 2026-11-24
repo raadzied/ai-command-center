@@ -7,20 +7,21 @@ const RIGHT_ARC = [-28, -10, 0, 0, -10, -28];
 const RIGHT_ARC_COMPACT = [-10, -4, 0, 0, -4, -10];
 
 function agentRow(agent: AgentNode, halted: boolean, offset: number): string {
-  const circle = halted ? 'node-halted' : agent.active ? 'node-agent-active' : 'node-agent-idle';
-  const label = agent.active && !halted ? '' : ' is-idle';
+  const state = halted ? 'is-error' : `is-${agent.status}`;
+  const label = agent.status === 'active' && !halted ? '' : ' is-idle';
   return `
     <div class="node-row" data-agent-id="${esc(agent.id)}" style="transform: translateX(${offset}px)">
       <span class="node-label${label}">${esc(agent.name)}</span>
-      <div id="node-circle-${esc(agent.id)}" class="node-circle ${circle}">${agent.icon}</div>
+      <div id="node-circle-${esc(agent.id)}" class="node-circle node-agent ${state}">${agent.icon}</div>
     </div>`;
 }
 
 function resourceRow(resource: ResourceNode, halted: boolean, offset: number): string {
   const pct = clamp(Math.round(resource.pct), 0, 100);
+  const state = halted ? 'is-error' : `is-${resource.status}`;
   return `
     <div class="node-row" data-resource-id="${esc(resource.id)}" style="transform: translateX(${offset}px)">
-      <div id="node-circle-${esc(resource.id)}" class="node-circle ${halted ? 'node-halted' : 'node-resource'}">${resource.icon}</div>
+      <div id="node-circle-${esc(resource.id)}" class="node-circle node-resource ${state}">${resource.icon}</div>
       <div class="node-meta">
         <span class="node-label">${esc(resource.name)}</span>
         <div class="res-line">
@@ -49,7 +50,7 @@ export function renderWings(app: ApexHudApi): void {
     .map((resource: ResourceNode, index: number) => resourceRow(resource, halted, rightArc[index] ?? 0))
     .join('');
 
-  const activeCount = halted ? 0 : app.agents.filter((agent: AgentNode) => agent.active).length;
+  const activeCount = halted ? 0 : app.agents.filter((agent: AgentNode) => agent.status === 'active').length;
   const badge = byId<HTMLElement>('active-agents-count');
   if (badge) badge.textContent = `AGENTS: ${activeCount}/${app.agents.length} ACTIVE`;
 

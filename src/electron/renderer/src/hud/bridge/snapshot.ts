@@ -20,9 +20,18 @@ function percentOf(part: number, total: number): number {
   return total <= 0 ? 0 : cap((part / total) * 100);
 }
 
+/** Writes the last provider/model that actually answered a request. */
+export function refreshActiveModelLabel(): void {
+  const element = document.getElementById('hud-model');
+  const active = cached?.activeModel;
+  if (!element || !active) return;
+  element.textContent = `MODEL: ${active.provider} · ${active.model}`;
+}
+
 /** Applies real counters to wing nodes and removes the old simulated entries. */
 export function applyHudSnapshot(app: ApexHudApi, snapshot: HudSnapshot): void {
   cached = snapshot;
+  refreshActiveModelLabel();
   const bars: Record<string, number> = {
     // Each bar maps a real quantity to 0..100 with a documented bound.
     sqlite: cap(snapshot.memory.dbSizeKb),

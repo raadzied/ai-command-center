@@ -63,6 +63,9 @@ export function setupProcessInputIpc(): void {
         onConsult: (payload): void => {
           event.sender.send('agent:consult', payload);
         },
+        onActivity: (payload): void => {
+          if (!event.sender.isDestroyed()) event.sender.send('hud:activity', payload);
+        },
       });
       return {
         ok: true,

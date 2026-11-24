@@ -1,5 +1,18 @@
 // Shared HUD snapshot contract (renderer-side declaration).
 
+export type NodeActivityState = 'idle' | 'active' | 'done' | 'error';
+
+export interface HudActivityEvent {
+  nodeId: string;
+  state: NodeActivityState;
+  detail?: string;
+  ttlMs?: number;
+}
+
+export interface HudActivityApi {
+  onHudActivity: (cb: (event: HudActivityEvent) => void) => () => void;
+}
+
 export interface HudMemorySnapshot {
   conversations: number;
   skills: number;
@@ -39,6 +52,7 @@ export interface HudSafetySnapshot {
 }
 
 export interface HudSnapshot {
+  activeModel: { provider: string; model: string };
   memory: HudMemorySnapshot;
   context: HudContextSnapshot;
   mcp: HudMcpSnapshot;

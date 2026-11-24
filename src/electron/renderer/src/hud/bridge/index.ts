@@ -4,13 +4,15 @@ import type { ApexHudApi } from '../types';
 import { hideApprovalModal, showApprovalModal } from './approval';
 import { appendLiveSettings } from './settings-panel';
 import { createLiveSession } from './live-ui';
-import { refreshHudSnapshot } from './snapshot';
+import { refreshActiveModelLabel, refreshHudSnapshot } from './snapshot';
 import { updateWorkspaceContext, initProjectBridge } from './projects';
 import { agentNodeId, agentLabel } from './agent-meta';
 import {
-  getLastRunPhase, resetLastRunPhase, isRunPhase, showRunPhase, showResponse,
+  getLastRunPhase, resetLastRunPhase, isRunPhase, showRunPhase,
 } from './run-display';
 import { bindConsultPulse } from './consult-pulse';
+import { bindHudActivity } from './activity';
+import { appendChatMessage, loadActiveSessionThread } from './chat-thread';
 
 let pending = false;
 
@@ -18,7 +20,6 @@ async function dispatch(
   app: ApexHudApi,
   api: Window['api'],
   raw: string,
-  quiet = false,
 ): Promise<string | null> {
   if (pending) {
     app.showToast('Core is busy — wait for the current task');
@@ -45,6 +46,7 @@ async function dispatch(
   pending = true;
   resetLastRunPhase();
   app.setCoreStatus('THINKING');
+  appendChatMessage('user', text);
   app.addSystemLog('You', raw);
   app.showToast('Dispatched to core...');
 
@@ -66,7 +68,7 @@ async function dispatch(
       agentLabel(response.agentUsed ?? null),
       `${response.intent ?? 'chat'} · ${response.elapsedMs ?? 0}ms · ${preview}…`,
     );
-    if (!quiet) showResponse(app, response.content, response);
+    appendChatMessage('agent', response.content, response.agentUsed ?? undefined);
     return response.content;
   } catch (error) {
     app.addSystemLog('Core', `IPC error: ${errorMessage(error)}`);
@@ -75,6 +77,7 @@ async function dispatch(
   } finally {
     pending = false;
     if (getLastRunPhase() !== 'CANCELLED') app.setCoreStatus('IDLE');
+    refreshActiveModelLabel();
     app.renderWings(); void app.refreshMemoryStats(); void refreshHudSnapshot(app);
   }
 }
@@ -88,14 +91,21 @@ export function bindBridge(app: ApexHudApi): void {
   initProjectBridge(app); updateWorkspaceContext(app);
 
   const session = createLiveSession(app, api, (text: string): Promise<string | null> =>
-    dispatch(app, api, text, true),
+    dispatch(app, api, text),
   );
 
+  void loadActiveSessionThread();
   app.addSystemLog('Orchestrator', 'Electron IPC bridge connected — live core online.');
   app.setCoreStatus('IDLE'); void app.refreshMemoryStats();
 
   api.onAgentActive((agent: string | null): void => {
     if (!agent) {
+      for (const node of app.agents) {
+        if (node.active) {
+          node.active = false;
+          node.status = 'idle';
+        }
+      }
       app.setCoreStatus('IDLE');
       app.renderWings();
       return;
@@ -104,6 +114,7 @@ export function bindBridge(app: ApexHudApi): void {
     const node = nodeId ? app.agents.find((item) => item.id === nodeId) : undefined;
     if (node) {
       node.active = true;
+      node.status = 'active';
       node.task = 'Executing live task...';
       node.logs.unshift(`Active · ${app.formatTime(app.state.elapsedSeconds)}`);
     }
@@ -119,6 +130,7 @@ export function bindBridge(app: ApexHudApi): void {
   });
 
   bindConsultPulse(app, api);
+  bindHudActivity(app, api);
 
   api.onRunPhase(({ phase, detail }): void => {
     if (isRunPhase(phase)) showRunPhase(app, phase, detail);

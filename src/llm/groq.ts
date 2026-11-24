@@ -2,6 +2,7 @@
 
 import { logger as log } from './logger.js';
 import { fetchWithTimeout } from './request-control.js';
+import { setActiveModel } from './active-model.js';
 import type { ChatOptions } from './chat.js';
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
@@ -105,6 +106,7 @@ export async function chatGroq(
     const text = extractGroqContent(data);
     if (text !== null) {
       log.info('Groq chat succeeded', { model });
+      setActiveModel('Groq', model);
       return text;
     }
   }

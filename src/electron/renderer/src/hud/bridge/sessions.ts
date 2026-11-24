@@ -4,6 +4,7 @@
 import { byId, esc } from '../dom';
 import type { ApexHudApi } from '../types';
 import type { WorkspaceContext } from '../../window';
+import { loadActiveSessionThread, openChatThread } from './chat-thread';
 
 type Refresh = () => Promise<void>;
 type FinishMode = 'enter' | 'blur' | 'cancel';
@@ -44,17 +45,10 @@ export function renderSessions(ctx: WorkspaceContext): void {
   if (countEl) countEl.textContent = String((ctx.sessions ?? []).length);
 }
 
-/** Shows the last 100 messages of the active session in the Inspector. */
+/** Manually opens the unified thread with the active session messages. */
 async function showSessionLog(app: ApexHudApi): Promise<void> {
   const result = await window.api.sessionMessages();
-  const messages = result.messages ?? [];
-  const body = messages.length === 0
-    ? '<p class="ins-muted">No messages in this session yet.</p>'
-    : messages.map((m) =>
-        `<div class="ins-trace"><span class="ins-tag">${esc(m.role)}</span>` +
-        `<pre class="ins-pre" dir="auto">${esc(m.content)}</pre></div>`,
-      ).join('');
-  app.openInspector('Session History', 'LAST 100 MESSAGES', '#F59E0B', body);
+  openChatThread(app, result.messages ?? []);
 }
 
 /** Swaps the row button for a focused, fully-selected input (inline rename). */
@@ -167,6 +161,7 @@ export function initSessionStrip(app: ApexHudApi, refresh: Refresh): void {
         if (Number.isNaN(id)) return;
         const res = await window.api.selectSession(id);
         if (!res.ok) { app.showToast(res.error ?? 'Select failed'); return; }
+        await loadActiveSessionThread();
         await refresh();
       } else if (item.dataset['action'] === 'create-session') {
         const res = await window.api.createSession();

@@ -7,6 +7,7 @@ import { getDb } from '../memory/db.js';
 import { getWorkspaceProject } from '../memory/projects.js';
 import { getSession } from '../memory/sessions.js';
 import { setApprovalStrategy } from '../security/approval.js';
+import { emitActivity } from '../core/hud-activity.js';
 import type { ApprovalDecision, ClassifiedAction, RunScope } from '../types.js';
 import type { FileDiffPreview } from '../tools/diff.js';
 import { getWindowEntry } from './window-registry.js';
@@ -110,6 +111,13 @@ export function initElectronApprovalStrategy(): void {
           ...contextLabels(scope),
         };
         win.webContents.send('approval:request', payload);
+        emitActivity((activity): void => {
+          if (!win.webContents.isDestroyed()) win.webContents.send('hud:activity', activity);
+        }, {
+          nodeId: action.type === 'mcp_tool' ? 'mcp' : 'fs',
+          state: 'active',
+          detail: 'بانتظار الموافقة',
+        });
         if (!win.isFocused()) win.flashFrame(true);
       }),
   });

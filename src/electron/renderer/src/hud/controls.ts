@@ -1,15 +1,21 @@
 import { byId } from './dom';
+import { openChatThread } from './bridge/chat-thread';
 import type { ApexHudApi, CoreController, CoreStatus } from './types';
 
 /** Wires every dock control, the clock, the command form and keyboard shortcuts. */
 export function bindControls(app: ApexHudApi, core: CoreController): void {
   const clock = byId<HTMLElement>('hud-clock');
+  const pad = (value: number): string => String(value).padStart(2, '0');
 
-  window.setInterval((): void => {
-    if (app.state.coreStatus === 'HALTED') return;
-    app.state.elapsedSeconds += 1;
-    if (clock) clock.textContent = app.formatTime(app.state.elapsedSeconds);
-  }, 1000);
+  const tickClock = (): void => {
+    const now = new Date();
+    app.state.elapsedSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    if (clock) {
+      clock.textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    }
+  };
+  tickClock();
+  window.setInterval(tickClock, 1000);
 
   const unlock = (): void => {
     app.audio.unlockAndBootOnce();
@@ -105,7 +111,7 @@ export function bindControls(app: ApexHudApi, core: CoreController): void {
     app.audio.playClick(820);
     const drawer = byId<HTMLElement>('inspector-drawer');
     if (drawer?.classList.contains('is-open')) app.closeInspector();
-    else app.openTerminalInspector();
+    else openChatThread(app);
   });
 
   byId<HTMLButtonElement>('btn-close-inspector')?.addEventListener('click', (): void => {

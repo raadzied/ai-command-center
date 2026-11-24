@@ -28,68 +28,44 @@ export function closeInspector(app: ApexHudApi): void {
   app.state.selectedNodeId = null;
 }
 
-/** Agent telemetry panel with pause / activate and ping actions. */
+/** Read-only agent panel fed by real hud:activity events. */
 export function openAgentInspector(app: ApexHudApi, id: string): void {
   const agent = app.agents.find((item) => item.id === id);
   if (!agent) return;
 
   app.state.selectedNodeId = id;
   const halted = app.state.coreStatus === 'HALTED';
-  const badge = halted ? '#EF4444' : agent.active ? '#F59E0B' : '#94A3B8';
-  const tag = agent.active && !halted ? 'ins-tag is-amber' : 'ins-tag';
-  const stateLabel = halted ? 'HALTED' : agent.active ? 'ACTIVE' : 'STANDBY';
+  const status = halted ? 'HALTED' : agent.status.toUpperCase();
+  const badge = status === 'ERROR' || status === 'HALTED'
+    ? '#EF4444'
+    : status === 'ACTIVE' ? '#F59E0B' : status === 'DONE' ? '#4ADE80' : '#94A3B8';
+  const tag = status === 'ACTIVE' ? 'ins-tag is-amber' : 'ins-tag';
+  const last = agent.lastActivity;
+  const activity = last === undefined
+    ? '<div class="ins-trace-line">No activity recorded</div>'
+    : `<div class="ins-trace-line">${esc(new Date(last.at).toISOString().slice(11, 19))} - ${esc(last.detail)}</div>`;
 
   const body = `
     <div class="ins-card">
       <div class="ins-row">
         <span class="ins-label">Role</span>
-        <span class="${tag}">${stateLabel}</span>
+        <span class="${tag}">${esc(status)}</span>
       </div>
       <div class="ins-value">${esc(agent.role)}</div>
       <p class="ins-text">${esc(agent.task)}</p>
     </div>
 
-    <div class="ins-actions">
-      <button id="insp-toggle-agent" class="ins-btn ${agent.active ? 'is-amber' : 'is-cyan'}" type="button">
-        ${agent.active ? 'Pause Agent' : 'Activate Agent'}
-      </button>
-      <button id="insp-pulse-agent" class="ins-btn" type="button">Ping</button>
+    <div class="ins-trace">
+      <div class="ins-section-title">Last Activity</div>
+      ${activity}
     </div>
 
     <div class="ins-trace">
-      <div class="ins-section-title">Agent Execution Trace</div>
+      <div class="ins-section-title">Execution Trace</div>
       ${agent.logs.map((line: string) => `<div class="ins-trace-line">${esc(line)}</div>`).join('')}
     </div>`;
 
   openInspectorPanel(agent.name, 'SPECIALIST AGENT NODE', badge, body);
-
-  const toggle = byId<HTMLButtonElement>('insp-toggle-agent');
-  if (toggle) {
-    toggle.addEventListener('click', (): void => {
-      if (app.state.coreStatus === 'HALTED') {
-        app.showToast('System halted. Resume core first.');
-        return;
-      }
-      agent.active = !agent.active;
-      app.addSystemLog(agent.name, agent.active ? 'Activated via Inspector' : 'Placed on standby');
-      app.triggerBurst(1200);
-      app.renderWings();
-      app.openAgentInspector(id);
-    });
-  }
-
-  const ping = byId<HTMLButtonElement>('insp-pulse-agent');
-  if (ping) {
-    ping.addEventListener('click', (): void => {
-      if (!agent.active && app.state.coreStatus !== 'HALTED') agent.active = true;
-      agent.logs.unshift(`Heartbeat verified [${app.formatTime(app.state.elapsedSeconds)}]`);
-      app.addSystemLog(agent.name, 'Neural link ping acknowledged (4ms)');
-      app.triggerBurst(1600);
-      app.renderWings();
-      app.openAgentInspector(id);
-      app.showToast(`Pulse dispatched to ${agent.name}`);
-    });
-  }
 }
 
 /** Live orchestrator event stream. */

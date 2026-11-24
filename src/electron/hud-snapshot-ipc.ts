@@ -15,10 +15,12 @@ import type { RunScope } from '../types.js';
 import { getMcpRuntimeStatus } from '../tools/mcp-manager.js';
 import { hasPendingApproval } from './approval-bridge.js';
 import { getWindowEntry } from './window-registry.js';
+import { getActiveModel } from '../llm/active-model.js';
 
 const MAX_FILES = 80;
 
 interface HudSnapshot {
+  activeModel: { provider: string; model: string };
   memory: { conversations: number; skills: number; decisions: number; sessions: number; dbSizeKb: number };
   context: { recentMessages: number; activeSkills: number; hasProjectBrief: boolean };
   mcp: { total: number; connected: number; toolCount: number };
@@ -121,6 +123,7 @@ export function registerHudSnapshotHandler(): void {
       ? scope.workspaceRoot : null;
     const usage = process.memoryUsage();
     return {
+      activeModel: getActiveModel(),
       memory: {
         conversations: countRows('conversations'),
         skills: countRows('skills'),

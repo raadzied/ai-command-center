@@ -30,7 +30,7 @@ function curve(from: Anchor, to: Anchor, side: 'left' | 'right'): string {
   return `M ${from.x.toFixed(1)} ${from.y.toFixed(1)} C ${cp1x.toFixed(1)} ${cp1y.toFixed(1)}, ${cp2x.toFixed(1)} ${cp2y.toFixed(1)}, ${to.x.toFixed(1)} ${to.y.toFixed(1)}`;
 }
 
-/** Recomputes the radial SVG constellation between the core and every node. */
+// الأسطر الهادئة هي الافتراض؛ النبض المتحرك يُرسم فقط للعقد النشطة فعلياً.
 export function drawConstellationPaths(app: ApexHudApi): void {
   const pathsGroup = document.querySelector('#constellation-paths');
   const pulsesGroup = document.querySelector('#constellation-pulses');
@@ -47,35 +47,48 @@ export function drawConstellationPaths(app: ApexHudApi): void {
   const burst = performance.now() < app.state.burstUntil;
   const result: Paths = { base: [], pulses: [] };
 
-  app.agents.forEach((agent, index): void => {
+  app.agents.forEach((agent): void => {
     const to = nodeAnchor(agent.id, 'left');
     if (!to) return;
     const path = curve(leftAnchor, to, 'left');
+    const active = agent.status === 'active' && !halted;
     const stroke = halted
       ? 'rgba(239, 68, 68, 0.25)'
-      : agent.active
+      : active
         ? 'rgba(245, 158, 11, 0.58)'
-        : 'rgba(148, 163, 184, 0.26)';
+        : agent.status === 'error'
+          ? 'rgba(239, 68, 68, 0.38)'
+          : agent.status === 'done'
+            ? 'rgba(74, 222, 128, 0.3)'
+            : 'rgba(148, 163, 184, 0.18)';
     result.base.push(
-      `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="${agent.active && !halted ? '1.35' : '1'}" />`,
+      `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="${active ? '1.35' : '1'}" />`,
     );
-    if (agent.active && !halted) {
+    if (active) {
       result.pulses.push(
-        `<path d="${path}" class="svg-pulse-amber${burst ? ' svg-pulse-burst' : ''}" style="animation-delay: ${(index * -0.45).toFixed(2)}s" />`,
+        `<path d="${path}" class="svg-pulse-amber is-active${burst ? ' svg-pulse-burst' : ''}" />`,
       );
     }
   });
 
-  app.resources.forEach((resource, index): void => {
+  app.resources.forEach((resource): void => {
     const to = nodeAnchor(resource.id, 'right');
     if (!to) return;
     const path = curve(rightAnchor, to, 'right');
-    result.base.push(
-      `<path d="${path}" fill="none" stroke="${halted ? 'rgba(239, 68, 68, 0.22)' : 'rgba(56, 189, 248, 0.48)'}" stroke-width="1.2" />`,
-    );
-    if (!halted) {
+    const active = resource.status === 'active' && !halted;
+    const stroke = halted
+      ? 'rgba(239, 68, 68, 0.22)'
+      : active
+        ? 'rgba(56, 189, 248, 0.58)'
+        : resource.status === 'error'
+          ? 'rgba(239, 68, 68, 0.34)'
+          : resource.status === 'done'
+            ? 'rgba(74, 222, 128, 0.28)'
+            : 'rgba(56, 189, 248, 0.18)';
+    result.base.push(`<path d="${path}" fill="none" stroke="${stroke}" stroke-width="1" />`);
+    if (active) {
       result.pulses.push(
-        `<path d="${path}" class="svg-pulse-cyan${burst ? ' svg-pulse-burst' : ''}" style="animation-delay: ${(index * -0.55).toFixed(2)}s" />`,
+        `<path d="${path}" class="svg-pulse-cyan is-active${burst ? ' svg-pulse-burst' : ''}" />`,
       );
     }
   });

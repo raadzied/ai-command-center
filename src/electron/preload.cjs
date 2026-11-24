@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   onAgentActive: (callback) => subscribe('agent:active', callback),
   onTaskStart: (callback) => subscribe('task:start', callback),
   onAgentConsult: (callback) => subscribe('agent:consult', callback),
+  onHudActivity: (callback) => subscribe('hud:activity', callback),
   onRunPhase: (callback) => subscribe('run:phase', callback),
   getVoiceStatus: () => ipcRenderer.invoke('voice:status'),
   toggleVoice: (enabled) => ipcRenderer.invoke('voice:toggle', enabled),

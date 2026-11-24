@@ -8,10 +8,14 @@ export type RunPhase =
 
 export type ResourceType = 'memory' | 'context' | 'mcp' | 'fs' | 'voice' | 'telemetry';
 
+export type NodeStatus = 'idle' | 'active' | 'done' | 'error';
+
 export interface AgentNode {
   id: string;
   name: string;
   active: boolean;
+  status: NodeStatus;
+  lastActivity?: { at: number; detail: string };
   icon: string;
   role: string;
   task: string;
@@ -22,6 +26,8 @@ export interface ResourceNode {
   id: string;
   name: string;
   pct: number;
+  status: NodeStatus;
+  lastActivity?: { at: number; detail: string };
   icon: string;
   type: ResourceType;
   desc: string;

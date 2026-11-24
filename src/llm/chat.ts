@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { logger as log } from './logger.js';
 import { fetchWithTimeout, waitForRetry } from './request-control.js';
 import { chatGroq } from './groq.js';
+import { setActiveModel } from './active-model.js';
 
 export { chatGroq };
 
@@ -80,6 +81,7 @@ export async function chat(
   let lastStatus = 0;
   let response: Response | null = null;
   const modelList = options.model ? [options.model] : models;
+  let usedModel = models[0] ?? 'gemini-2.5-flash';
 
   outer: for (const model of modelList) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
@@ -89,7 +91,10 @@ export async function chat(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       }, 60000, options.signal);
-      if (response.ok) break outer;
+      if (response.ok) {
+        usedModel = model;
+        break outer;
+      }
 
       lastStatus = response.status;
       if (![429, 500, 502, 503, 504].includes(lastStatus)) break outer;
@@ -112,6 +117,7 @@ export async function chat(
   }
 
   const data = (await response.json()) as unknown;
+  setActiveModel('Gemini', usedModel);
   return extractText(data);
 }
 

@@ -16,101 +16,56 @@ export const ICONS: Record<string, string> = {
   telemetry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><polyline points="7 12 10 12 11.5 9 13 15 14.5 12 17 12"></polyline></svg>`,
 };
 
-/** Left wing — seven agent nodes. */
+/** Left wing — seven agent nodes, all idle until a real event arrives. */
 export const AGENTS: AgentNode[] = [
   {
-    id: 'orchestrator',
-    name: 'Orchestrator',
-    active: true,
-    icon: ICONS.orchestrator ?? '',
-    role: 'Central DAG Planner & Dispatcher',
-    task: 'Coordinating multi-agent execution pipeline',
-    logs: ['Routing intent graph to active specialists', 'Monitoring token budget and latency'],
+    id: 'orchestrator', name: 'Orchestrator', active: false, status: 'idle',
+    icon: ICONS.orchestrator ?? '', role: 'Central DAG Planner & Dispatcher',
+    task: 'Awaiting live orchestration events', logs: [],
   },
   {
-    id: 'mentor',
-    name: 'Mentor',
-    active: true,
-    icon: ICONS.advisor ?? '',
-    role: 'Educational Guide & Prompt Engineer',
-    task: 'Teaching Arabic prompting and guiding through specs',
-    logs: ['Ready for @Mentor dispatches', 'Can explain concepts in Arabic'],
+    id: 'mentor', name: 'Mentor', active: false, status: 'idle',
+    icon: ICONS.advisor ?? '', role: 'Educational Guide & Prompt Engineer',
+    task: 'Awaiting dispatch', logs: [],
   },
   {
-    id: 'coder',
-    name: 'Coder',
-    active: true,
-    icon: ICONS.coder ?? '',
-    role: 'TypeScript / Electron Engineer',
-    task: 'Active — ready for code generation requests',
-    logs: ['Standby for @Coder dispatch', 'Ready to generate TypeScript modules'],
+    id: 'coder', name: 'Coder', active: false, status: 'idle',
+    icon: ICONS.coder ?? '', role: 'TypeScript / Electron Engineer',
+    task: 'Awaiting dispatch', logs: [],
   },
   {
-    id: 'designer',
-    name: 'Designer',
-    active: true,
-    icon: ICONS.designer ?? '',
-    role: 'Tactical UI & Visual Architect',
-    task: 'Rendering 60fps topographic HUD shaders',
-    logs: ['Verified contrast ratios & SVG alignments', 'Optimizing canvas DPI scaling'],
+    id: 'designer', name: 'Designer', active: false, status: 'idle',
+    icon: ICONS.designer ?? '', role: 'Tactical UI & Visual Architect',
+    task: 'Awaiting dispatch', logs: [],
   },
   {
-    id: 'advisor',
-    name: 'Advisor',
-    active: true,
-    icon: ICONS.advisor ?? '',
-    role: 'Strategic & Architecture Advisor',
-    task: 'Comparing options and surfacing architectural risks',
-    logs: ['Consultation is text-only: no file or code changes', 'Scoped to the active run context'],
+    id: 'advisor', name: 'Advisor', active: false, status: 'idle',
+    icon: ICONS.advisor ?? '', role: 'Strategic & Architecture Advisor',
+    task: 'Awaiting consultation', logs: [],
   },
   {
-    id: 'browser',
-    name: 'Browser',
-    active: true,
-    icon: ICONS.browser ?? '',
-    role: 'MCP Web & API Anything',
-    task: 'Running connected MCP tools for the active project',
-    logs: ['MCP servers connect only when enabled', 'External calls pass the approval gate'],
+    id: 'browser', name: 'Browser', active: false, status: 'idle',
+    icon: ICONS.browser ?? '', role: 'MCP Web & API Anything',
+    task: 'Awaiting MCP activity', logs: [],
   },
   {
-    id: 'commander',
-    name: 'Commander',
-    active: true,
-    icon: ICONS.commander ?? '',
-    role: 'Execution Planning & Priority Ordering',
-    task: 'Turning goals into ordered, dependency-aware plans',
-    logs: ['Planning output is text-only: execution stays with Coder', 'Steps ordered by priority within the active run'],
+    id: 'commander', name: 'Commander', active: false, status: 'idle',
+    icon: ICONS.commander ?? '', role: 'Execution Planning & Priority Ordering',
+    task: 'Awaiting planning request', logs: [],
   },
 ];
 
-/** Right wing — six resource and memory nodes. */
+/** Right wing — six resource nodes, filled by the live snapshot. */
 export const RESOURCES: ResourceNode[] = [
-  { id: 'sqlite', name: 'SQLite Memory', pct: 0, icon: ICONS.sqlite ?? '', type: 'memory', desc: 'Persistent conversations, skills, decisions and sessions' },
-  { id: 'context', name: 'Context Window', pct: 0, icon: ICONS.context ?? '', type: 'context', desc: 'Live session messages and enabled instruction skills' },
-  { id: 'mcp', name: 'MCP Servers', pct: 0, icon: ICONS.mcp ?? '', type: 'mcp', desc: 'Connected MCP servers and their tool inventory' },
-  { id: 'filesystem', name: 'File System', pct: 0, icon: ICONS.filesystem ?? '', type: 'fs', desc: 'Workspace files indexed from the scoped project root' },
-  { id: 'voice', name: 'Voice Engine', pct: 0, icon: ICONS.voice ?? '', type: 'voice', desc: 'Speech pipeline for the focused HUD window' },
-  { id: 'telemetry', name: 'System Telemetry', pct: 0, icon: ICONS.telemetry ?? '', type: 'telemetry', desc: 'Actual RSS memory, heap usage and process uptime' },
+  { id: 'sqlite', name: 'SQLite Memory', pct: 0, status: 'idle', icon: ICONS.sqlite ?? '', type: 'memory', desc: 'Persistent conversations, skills, decisions and sessions' },
+  { id: 'context', name: 'Context Window', pct: 0, status: 'idle', icon: ICONS.context ?? '', type: 'context', desc: 'Live session messages and enabled instruction skills' },
+  { id: 'mcp', name: 'MCP Servers', pct: 0, status: 'idle', icon: ICONS.mcp ?? '', type: 'mcp', desc: 'Connected MCP servers and their tool inventory' },
+  { id: 'filesystem', name: 'File System', pct: 0, status: 'idle', icon: ICONS.filesystem ?? '', type: 'fs', desc: 'Workspace files indexed from the scoped project root' },
+  { id: 'voice', name: 'Voice Engine', pct: 0, status: 'idle', icon: ICONS.voice ?? '', type: 'voice', desc: 'Speech pipeline for the focused HUD window' },
+  { id: 'telemetry', name: 'System Telemetry', pct: 0, status: 'idle', icon: ICONS.telemetry ?? '', type: 'telemetry', desc: 'Actual RSS memory, heap usage and process uptime' },
 ];
 
-export const MCP_SERVERS: McpServer[] = [
-  { id: 'playwright', name: 'Playwright Browser MCP', enabled: true, latency: '18ms' },
-  { id: 'desktop', name: 'Desktop Commander MCP', enabled: true, latency: '9ms' },
-  { id: 'sqlite', name: 'SQLite Vector Memory', enabled: true, latency: '4ms' },
-  { id: 'filesystem', name: 'Local File System MCP', enabled: true, latency: '6ms' },
-];
-
-export const MEMORY_ENTRIES: MemoryEntry[] = [
-  { key: 'project.root', value: 'AI Command Center (v4.1)', score: '0.98' },
-  { key: 'voice.engine', value: 'Groq whisper-large-v3-turbo [Ctrl+Space]', score: '0.95' },
-  { key: 'safety.policy', value: 'Human-in-the-Loop active for OS ops', score: '0.92' },
-  { key: 'ui.theme', value: 'Tactical Dark / Cyan-Amber Constellation', score: '0.89' },
-];
-
-export const SYSTEM_LOGS: SystemLog[] = [
-  { time: '00:08:49', source: 'Orchestrator', msg: 'Initialized Sentient Core neural mesh.' },
-  { time: '00:08:51', source: 'SQLite Memory', msg: 'Loaded 1,428 vector embeddings (58% pool).' },
-  { time: '00:08:53', source: 'Designer', msg: 'Synced 16:9 widescreen tactical HUD layout.' },
-  { time: '00:08:54', source: 'Advisor', msg: 'Verified Human-in-the-Loop safety boundaries.' },
-  { time: '00:08:55', source: 'OS Commander', msg: 'Listening on Electron IPC bridge [READY].' },
-];
+// populate from the main-process snapshot — no fabricated seed values.
+export const MCP_SERVERS: McpServer[] = [];
+export const MEMORY_ENTRIES: MemoryEntry[] = [];
+export const SYSTEM_LOGS: SystemLog[] = [];

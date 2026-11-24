@@ -13,6 +13,7 @@ import { getAssistantMode } from '../security/settings.js';
 import { buildInstructionSkillsText, buildMcpToolsText } from '../agents/base.js';
 import { runTask } from './task-runner.js';
 import { createSharedBoard } from './shared-board.js';
+import { emitActivity } from './hud-activity.js';
 import { RunCancelledError, throwIfAborted } from './run-control.js';
 import type { TaskRunnerDeps } from './task-runner.js';
 import type { RunPhase, RunPhaseListener } from './run-control.js';
@@ -85,6 +86,18 @@ function complete(deps: LoopDeps, result: LoopResult): LoopResult {
   return result;
 }
 
+async function saveWithActivity(
+  deps: LoopDeps,
+  user: string,
+  agent: string,
+  name: string | null,
+  scope: RunScope,
+): Promise<void> {
+  emitActivity(deps.onActivity, { nodeId: 'sqlite', state: 'active' });
+  await deps.saveToMemory(user, agent, name, scope);
+  emitActivity(deps.onActivity, { nodeId: 'sqlite', state: 'done' });
+}
+
 export async function processInputScoped(
   input: string,
   scope: RunScope,
@@ -100,8 +113,18 @@ export async function processInputScoped(
     if (!trimmed) return complete(deps, { intent: 'empty', agentUsed: null, content: '', elapsedMs: 0 });
     throwIfAborted(deps.signal);
     deps.onPhase?.('PLANNING');
+    emitActivity(deps.onActivity, { nodeId: 'sqlite', state: 'active' });
+    emitActivity(deps.onActivity, { nodeId: 'context', state: 'active' });
     const context = await deps.buildMemoryContext(trimmed, scope);
     throwIfAborted(deps.signal);
+    emitActivity(deps.onActivity, {
+      nodeId: 'sqlite', state: 'done', detail: `${context.memories.length} memories`,
+    });
+    emitActivity(deps.onActivity, {
+      nodeId: 'context', state: 'done',
+      detail: `${context.memories.length} memories, ${context.recentMessages?.length ?? 0} messages`,
+    });
+    emitActivity(deps.onActivity, { nodeId: 'orchestrator', state: 'active' });
     const plan = await deps.createPlan(trimmed, context, deps.signal);
     throwIfAborted(deps.signal);
     const mode = getAssistantMode();
@@ -121,7 +144,7 @@ export async function processInputScoped(
         ...(deps.signal ? { signal: deps.signal } : {}),
       });
       throwIfAborted(deps.signal);
-      if (mode === 'build') await deps.saveToMemory(trimmed, reply.trim(), null, scope);
+      if (mode === 'build') await saveWithActivity(deps, trimmed, reply.trim(), null, scope);
       const result = { intent: 'chat', agentUsed: null, content: reply.trim(), elapsedMs: Date.now() - start };
       deps.enqueueSpeech(result.content, result.agentUsed);
       return complete(deps, result);
@@ -161,7 +184,7 @@ export async function processInputScoped(
     const result: LoopResult = { intent: plan.intent, agentUsed: lastAgent, content, elapsedMs: Date.now() - start };
     if (summaries.length > 1) result.taskSummary = summaries;
     throwIfAborted(deps.signal);
-    await deps.saveToMemory(trimmed, result.content, lastAgent, scope);
+    await saveWithActivity(deps, trimmed, result.content, lastAgent, scope);
     throwIfAborted(deps.signal);
     deps.onAgentActive?.(null);
     return complete(deps, result);
@@ -174,6 +197,8 @@ export async function processInputScoped(
     deps.onPhase?.('ERROR', err instanceof Error ? err.message : String(err));
     throw err;
   } finally {
+    emitActivity(deps.onActivity, { nodeId: 'orchestrator', state: 'done', ttlMs: 2000 });
+    emitActivity(deps.onActivity, { nodeId: 'telemetry', state: 'done', ttlMs: 1800 });
     board.dispose();
   }
 }

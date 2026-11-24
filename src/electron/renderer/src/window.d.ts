@@ -1,4 +1,4 @@
-import type { HudSnapshot } from './hud-api';
+import type { HudActivityEvent, HudSnapshot } from './hud-api';
 
 export {};
 
@@ -177,6 +177,7 @@ declare global {
       onAgentActive: (cb: (agent: string | null) => void) => () => void;
       onTaskStart: (cb: (data: { index: number; total: number }) => void) => () => void;
       onAgentConsult: (cb: (d: { from: string; to: string; topic: string }) => void) => () => void;
+      onHudActivity: (cb: (event: HudActivityEvent) => void) => () => void;
       onRunPhase: (cb: (data: RunPhaseData) => void) => () => void;
       getVoiceStatus: () => Promise<boolean>;
       toggleVoice: (enabled?: boolean) => Promise<boolean>;
@@ -191,10 +192,7 @@ declare global {
       getMemoryStats: () => Promise<MemoryStats>;
       getAssistantSettings: () => Promise<AssistantSettings>;
       setAssistantMode: (mode: AssistantMode) => Promise<AssistantSettings>;
-      setPermission: (
-        permission: AssistantPermission,
-        enabled: boolean,
-      ) => Promise<AssistantSettings>;
+      setPermission: (permission: AssistantPermission, enabled: boolean) => Promise<AssistantSettings>;
       getWorkspaceContext: () => Promise<WorkspaceContext>;
       getProjectBrief: () => Promise<ProjectBriefResult>;
       refreshProjectBrief: () => Promise<ProjectBriefResult>;
